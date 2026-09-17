@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS profiles (
         REFERENCES users(id) ON DELETE CASCADE,
 
     gender VARCHAR(30),
-    sexual_preference VARCHAR(30) NOT NULL DEFAULT 'bisexual',
+    sexual_preference VARCHAR(30) NOT NULL DEFAULT 'everyone',
     biography VARCHAR(1000),
     birth_date DATE,
 
@@ -27,14 +27,10 @@ CREATE TABLE IF NOT EXISTS profiles (
 
     CONSTRAINT profiles_preference_check
         CHECK (
-            sexual_preference IN (
-                'male',
-                'female',
-                'bisexual'
-            )
+            sexual_preference IN ('male', 'female', 'everyone')
         ),
 
-    CONSTRAINT profiles_birth_date_check
+    CONSTRAINT profiles_adult_check
         CHECK (
             birth_date IS NULL
             OR birth_date <= CURRENT_DATE - INTERVAL '18 years'
@@ -55,14 +51,14 @@ CREATE TABLE IF NOT EXISTS profiles (
             OR longitude BETWEEN -180 AND 180
         ),
 
-    CONSTRAINT profiles_location_check
-    CHECK (
-        location_consent = FALSE
-        OR (
-            latitude IS NOT NULL
-            AND longitude IS NOT NULL
+    CONSTRAINT profiles_gps_check
+        CHECK (
+            location_consent = FALSE
+            OR (
+                latitude IS NOT NULL
+                AND longitude IS NOT NULL
+            )
         )
-    )
 );
 
 CREATE TABLE IF NOT EXISTS tags (
@@ -96,13 +92,18 @@ CREATE TABLE IF NOT EXISTS profile_pictures (
         REFERENCES users(id) ON DELETE CASCADE,
 
     file_path TEXT NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    file_size INTEGER NOT NULL,
     is_profile_picture BOOLEAN NOT NULL DEFAULT FALSE,
-    position SMALLINT NOT NULL DEFAULT 1,
+    position SMALLINT NOT NULL,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT profile_pictures_position_check
-        CHECK (position BETWEEN 1 AND 5)
+        CHECK (position BETWEEN 1 AND 5),
+
+    CONSTRAINT profile_pictures_file_size_check
+        CHECK (file_size > 0)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS one_profile_picture_per_user

@@ -6,10 +6,40 @@ import rateLimit from "@fastify/rate-limit";
 import { env } from "./config/env.js";
 import { database } from "./database/client.js";
 import { authRoutes } from "./routes/auth.routes.js";
+import { profileRoutes } from "./routes/profile.routes.js";
+import multipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
+import {
+  accountRoutes,
+} from "./routes/account.routes.js";
+import {
+  discoveryRoutes,
+} from "./routes/discovery.routes.js";
+import {
+  interactionRoutes,
+} from "./routes/interaction.routes.js";
+import {
+  searchRoutes,
+} from "./routes/search.routes.js";
+import {
+  activityRoutes,
+} from "./routes/activity.routes.js";
+import {
+  notificationRoutes,
+} from "./routes/notification.routes.js";
 
 const app = Fastify({
   logger: true,
 });
+import {
+  closeSocketServer,
+  initializeSocketServer,
+} from "./sockets/socket.js";
+
+
+
 
 await app.register(cors, {
   origin: env.FRONTEND_URL,
@@ -33,8 +63,58 @@ await app.register(rateLimit, {
   timeWindow: "1 minute",
 });
 
+await app.register(accountRoutes, {
+  prefix: "/api/account",
+});
+
+await app.register(interactionRoutes, {
+  prefix: "/api/interactions",
+});
+
+await app.register(searchRoutes, {
+  prefix: "/api/search",
+});
+
+await app.register(activityRoutes, {
+  prefix: "/api/activity",
+});
+
+await app.register(notificationRoutes, {
+  prefix: "/api/notifications",
+});
+
+initializeSocketServer(app);
+
+const uploadsRoot = path.resolve(process.cwd(), "uploads");
+
+await mkdir(uploadsRoot, {
+  recursive: true,
+});
+
+await app.register(multipart, {
+  limits: {
+    files: 1,
+    fileSize: 5 * 1024 * 1024,
+    fields: 5,
+  },
+});
+
+await app.register(fastifyStatic, {
+  root: uploadsRoot,
+  prefix: "/uploads/",
+  decorateReply: false,
+});
+
 await app.register(authRoutes, {
   prefix: "/api/auth",
+});
+
+await app.register(profileRoutes, {
+  prefix: "/api/profile",
+});
+
+await app.register(discoveryRoutes, {
+  prefix: "/api/profiles",
 });
 
 app.get("/health", async () => {
@@ -72,6 +152,7 @@ app.setErrorHandler(
 );
 
 app.addHook("onClose", async () => {
+  await closeSocketServer();
   await database.end();
 });
 
