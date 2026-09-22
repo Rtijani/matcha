@@ -10,6 +10,10 @@ import VerifyEmailView from "../views/VerifyEmailView.vue";
 import ForgotPasswordView from "../views/ForgotPasswordView.vue";
 import ResetPasswordView from "../views/ResetPasswordView.vue";
 import ProfileView from "../views/ProfileView.vue";
+import PublicProfileView from "../views/PublicProfileView.vue";
+
+
+
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -38,10 +42,6 @@ export const router = createRouter({
       meta: {
         guestOnly: true,
       },
-    },
-    {
-      path: "/:pathMatch(.*)*",
-      redirect: "/",
     },
 
     {
@@ -74,6 +74,18 @@ export const router = createRouter({
       name: "profile",
       component: ProfileView,
       meta: { requiresAuth: true },
+    },
+  
+    {
+      path: "/profiles/:userId",
+      name: "public-profile",
+      component: PublicProfileView,
+      meta: { requiresAuth: true },
+    },
+
+     {
+      path: "/:pathMatch(.*)*",
+      redirect: "/",
     },
   ],
 });
