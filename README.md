@@ -144,7 +144,7 @@ matcha/
 │   │   ├── views/
 │   │   └── App.vue
 │   └── package.json
-├── migrations/
+├── database/migrations/
 ├── scripts/
 │   └── migrate.sh
 ├── compose.yaml
