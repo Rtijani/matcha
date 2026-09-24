@@ -37,7 +37,9 @@ import {
   closeSocketServer,
   initializeSocketServer,
 } from "./sockets/socket.js";
-
+import {
+  chatRoutes,
+} from "./routes/chat.routes.js";
 
 
 
@@ -81,6 +83,10 @@ await app.register(activityRoutes, {
 
 await app.register(notificationRoutes, {
   prefix: "/api/notifications",
+});
+
+await app.register(chatRoutes, {
+  prefix: "/api/chat",
 });
 
 initializeSocketServer(app);

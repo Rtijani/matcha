@@ -190,7 +190,7 @@ NODE_ENV=development
 
 BACKEND_PORT=3000
 BACKEND_HOST=0.0.0.0
-FRONTEND_URL=http://localhost:5174
+FRONTEND_URL=http://localhost:5175
 
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5433
@@ -253,7 +253,7 @@ Development services are available at:
 
 | Service | Address |
 |---|---|
-| Frontend | `http://localhost:5174` |
+| Frontend | `http://localhost:5175` |
 | Backend | `http://localhost:3000` |
 | Health endpoint | `http://localhost:3000/health` |
 | Mailpit interface | `http://localhost:8025` |

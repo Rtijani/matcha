@@ -6,7 +6,7 @@ import {
   createNotification,
 } from "../services/notification.service.js";
 import {
-  emitToUser,
+  emitToUser, isUserOnline,
 } from "../sockets/socket.js";
 
 
@@ -478,6 +478,9 @@ export const discoveryRoutes = async (
           fameRating: profile.fame_rating,
           city: profile.city,
           neighborhood: profile.neighborhood,
+          
+          isOnline: isUserOnline(viewedUserId),
+
           lastConnection:
             profile.last_online_at ??
             profile.last_login_at,

@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: install up migrate seed dev build test stop clean status
+.PHONY: install up migrate seed dev build test stop clean status  mailpit mailpit-logs
 
 install:
 	cd backend && npm install
@@ -49,3 +49,12 @@ clean:
 
 status:
 	docker compose ps
+
+mailpit:
+	docker compose up -d mailpit
+	@echo "Mailpit is running."
+	@echo "Web interface: http://localhost:8025"
+	@echo "SMTP server: localhost:1025"
+
+mailpit-logs:
+	docker logs --tail 100 matcha_mailpit

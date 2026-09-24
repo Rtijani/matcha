@@ -232,12 +232,9 @@ export const authRoutes = async (
             firstName: user.first_name,
             lastName: user.last_name,
             createdAt: user.created_at,
-          },
-
-          // Temporary during development.
-          verificationToken,
-          
+          }, 
         });
+      
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;
