@@ -39,21 +39,37 @@ function selectPicture(event: Event): void {
   const file = input.files?.[0];
 
   profileStore.error = "";
+  profileStore.successMessage = "";
 
   if (!file) {
     clearPicturePreview();
     return;
   }
 
-  const allowedTypes = [
-    "image/jpeg",
-    "image/png",
-    "image/webp",
+  const allowedExtensions = [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
   ];
 
-  if (!allowedTypes.includes(file.type)) {
+  const filename = file.name.toLowerCase();
+
+  const hasAllowedExtension = allowedExtensions.some(
+    (extension) => filename.endsWith(extension),
+  );
+
+  if (!hasAllowedExtension) {
     profileStore.error =
-      "Only JPEG, PNG and WebP images are allowed.";
+      "Please select a JPEG, PNG or WebP image.";
+    input.value = "";
+    clearPicturePreview();
+    return;
+  }
+
+  if (file.size === 0) {
+    profileStore.error =
+      "The selected image is empty.";
     input.value = "";
     clearPicturePreview();
     return;
@@ -68,6 +84,7 @@ function selectPicture(event: Event): void {
   }
 
   clearPicturePreview();
+
   selectedPicture.value = file;
   picturePreview.value = URL.createObjectURL(file);
 }

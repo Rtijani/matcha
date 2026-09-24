@@ -67,6 +67,22 @@ onMounted(loadSuggestions);
       <RouterLink to="/profile" class="profile-button">
         Edit my profile
       </RouterLink>
+
+      <RouterLink to="/search" class="profile-button">
+        Search profiles
+      </RouterLink>
+
+      <RouterLink to="/activity" class="profile-button">
+        My activity
+      </RouterLink>
+
+      <RouterLink to="/notifications" class="profile-button">
+        Notifications
+      </RouterLink>
+
+      <RouterLink to="/chat" class="profile-button">
+        Messages
+      </RouterLink>
     </header>
 
     <p v-if="loading" role="status">

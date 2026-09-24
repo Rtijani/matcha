@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
+import {
+  RouterLink,
+  useRoute,
+  useRouter,
+} from "vue-router";
 import { api, getApiError } from "../services/api";
-import { RouterLink, useRoute, useRouter } from "vue-router";
 
 interface PublicPicture {
   id: string;
@@ -38,11 +42,16 @@ interface PublicProfile {
 
 const route = useRoute();
 const router = useRouter();
-const actionBusy = ref(false);
-const actionError = ref("");
+
 const profile = ref<PublicProfile | null>(null);
 const loading = ref(true);
 const error = ref("");
+const actionError = ref("");
+const successMessage = ref("");
+const actionBusy = ref(false);
+
+const showReportForm = ref(false);
+const reportReason = ref("");
 
 async function loadProfile(): Promise<void> {
   const userId = route.params.userId;
@@ -69,22 +78,31 @@ async function loadProfile(): Promise<void> {
     loading.value = false;
   }
 }
+
 async function toggleLike(): Promise<void> {
-  if (!profile.value || actionBusy.value) return;
+  if (!profile.value || actionBusy.value) {
+    return;
+  }
 
   actionBusy.value = true;
   actionError.value = "";
+  successMessage.value = "";
 
   try {
-    const url = `/interactions/${profile.value.id}/like`;
+    const url =
+      `/interactions/${profile.value.id}/like`;
 
     if (profile.value.relationship.youLiked) {
       await api.delete(url);
+      successMessage.value = "Like removed.";
     } else {
       await api.post(url);
+      successMessage.value = "Profile liked.";
     }
 
+    const message = successMessage.value;
     await loadProfile();
+    successMessage.value = message;
   } catch (requestError) {
     actionError.value = getApiError(requestError);
   } finally {
@@ -93,13 +111,17 @@ async function toggleLike(): Promise<void> {
 }
 
 async function blockUser(): Promise<void> {
-  if (!profile.value || actionBusy.value) return;
+  if (!profile.value || actionBusy.value) {
+    return;
+  }
 
   const confirmed = window.confirm(
     `Block ${profile.value.firstName}? You will no longer see each other's profiles.`,
   );
 
-  if (!confirmed) return;
+  if (!confirmed) {
+    return;
+  }
 
   actionBusy.value = true;
   actionError.value = "";
@@ -108,7 +130,60 @@ async function blockUser(): Promise<void> {
     await api.post(
       `/interactions/${profile.value.id}/block`,
     );
+
     await router.push("/");
+  } catch (requestError) {
+    actionError.value = getApiError(requestError);
+  } finally {
+    actionBusy.value = false;
+  }
+}
+
+function openReportForm(): void {
+  showReportForm.value = true;
+  reportReason.value = "";
+  actionError.value = "";
+  successMessage.value = "";
+}
+
+function closeReportForm(): void {
+  showReportForm.value = false;
+  reportReason.value = "";
+}
+
+async function submitReport(): Promise<void> {
+  if (!profile.value || actionBusy.value) {
+    return;
+  }
+
+  const reason = reportReason.value.trim();
+
+  if (reason.length < 10) {
+    actionError.value =
+      "Please provide at least 10 characters.";
+    return;
+  }
+
+  if (reason.length > 500) {
+    actionError.value =
+      "The report reason cannot exceed 500 characters.";
+    return;
+  }
+
+  actionBusy.value = true;
+  actionError.value = "";
+  successMessage.value = "";
+
+  try {
+    await api.post(
+      `/interactions/${profile.value.id}/report`,
+      { reason },
+    );
+
+    successMessage.value =
+      "Your report was submitted successfully.";
+
+    closeReportForm();
   } catch (requestError) {
     actionError.value = getApiError(requestError);
   } finally {
@@ -121,6 +196,8 @@ onMounted(loadProfile);
 watch(
   () => route.params.userId,
   () => {
+    showReportForm.value = false;
+    reportReason.value = "";
     void loadProfile();
   },
 );
@@ -136,12 +213,18 @@ watch(
       Loading profile...
     </p>
 
-    <section v-else-if="error" class="profile-card">
+    <section
+      v-else-if="error"
+      class="profile-card error-card"
+    >
       <h1>Profile unavailable</h1>
       <p role="alert">{{ error }}</p>
     </section>
 
-    <section v-else-if="profile" class="profile-card">
+    <section
+      v-else-if="profile"
+      class="profile-card"
+    >
       <div class="photo-grid">
         <img
           v-for="picture in profile.pictures"
@@ -160,19 +243,24 @@ watch(
 
       <div class="details">
         <h1>
-          {{ profile.firstName }}
-          <span v-if="profile.age">
-            , {{ profile.age }}
-          </span>
+          {{ profile.firstName }},
+          {{ profile.age }}
         </h1>
 
-        <p class="username">@{{ profile.username }}</p>
+        <p class="username">
+          @{{ profile.username }}
+        </p>
 
         <p v-if="profile.city" class="location">
           {{ profile.city }}
+
           <span v-if="profile.neighborhood">
             · {{ profile.neighborhood }}
           </span>
+        </p>
+
+        <p class="fame">
+          Fame rating: {{ profile.fameRating }}
         </p>
 
         <p v-if="profile.biography" class="biography">
@@ -192,82 +280,130 @@ watch(
           </span>
         </div>
 
-        <p v-if="profile.relationship?.connected" class="connection">
+        <p
+          v-if="profile.relationship.connected"
+          class="connection"
+        >
           You are connected ♥
         </p>
-        <p v-else-if="profile.relationship?.youLiked" class="connection">
+
+        <p
+          v-else-if="profile.relationship.youLiked"
+          class="connection"
+        >
           You liked this profile
         </p>
-        <p v-if="actionError" class="action-error" role="alert">
-  {{ actionError }}
-</p>
 
-<div class="profile-actions">
-  <button
-    type="button"
-    class="like-button"
-    :disabled="actionBusy"
-    @click="toggleLike"
-  >
-    {{
-      actionBusy
-        ? "Please wait..."
-        : profile.relationship.youLiked
-          ? "Unlike"
-          : "♥ Like"
-    }}
-  </button>
+        <p
+          v-else-if="profile.relationship.likedYou"
+          class="connection"
+        >
+          This person likes you
+        </p>
 
-  <button
-    type="button"
-    class="block-button"
-    :disabled="actionBusy"
-    @click="blockUser"
-  >
-    Block
-  </button>
-</div>
+        <p
+          v-if="actionError"
+          class="alert error"
+          role="alert"
+        >
+          {{ actionError }}
+        </p>
+
+        <p
+          v-if="successMessage"
+          class="alert success"
+        >
+          {{ successMessage }}
+        </p>
+
+        <div class="profile-actions">
+          <button
+            type="button"
+            class="like-button"
+            :disabled="actionBusy"
+            @click="toggleLike"
+          >
+            {{
+              profile.relationship.youLiked
+                ? "Unlike"
+                : "♥ Like"
+            }}
+          </button>
+
+          <button
+            type="button"
+            class="report-button"
+            :disabled="actionBusy"
+            @click="openReportForm"
+          >
+            Report
+          </button>
+
+          <button
+            type="button"
+            class="block-button"
+            :disabled="actionBusy"
+            @click="blockUser"
+          >
+            Block
+          </button>
+        </div>
+
+        <form
+          v-if="showReportForm"
+          class="report-form"
+          @submit.prevent="submitReport"
+        >
+          <label for="report-reason">
+            Why are you reporting this account?
+          </label>
+
+          <textarea
+            id="report-reason"
+            v-model="reportReason"
+            minlength="10"
+            maxlength="500"
+            rows="5"
+            required
+            placeholder="Describe the problem..."
+          />
+
+          <small>
+            {{ reportReason.trim().length }}/500 characters
+          </small>
+
+          <div class="report-actions">
+            <button
+              type="submit"
+              class="submit-report"
+              :disabled="
+                actionBusy ||
+                reportReason.trim().length < 10
+              "
+            >
+              {{
+                actionBusy
+                  ? "Submitting..."
+                  : "Submit report"
+              }}
+            </button>
+
+            <button
+              type="button"
+              class="cancel-button"
+              :disabled="actionBusy"
+              @click="closeReportForm"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
       </div>
     </section>
   </main>
 </template>
 
 <style scoped>
-.profile-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
-}
-
-.profile-actions button {
-  padding: 0.8rem 1.2rem;
-  border: 0;
-  border-radius: 12px;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.profile-actions button:disabled {
-  cursor: wait;
-  opacity: 0.6;
-}
-
-.like-button {
-  color: white;
-  background: #db2777;
-}
-
-.block-button {
-  color: #991b1b;
-  background: #fee2e2;
-}
-
-.action-error {
-  color: #991b1b;
-}
-
 .public-profile {
   width: min(950px, 100%);
   margin: 0 auto;
@@ -290,9 +426,14 @@ watch(
   box-shadow: 0 18px 45px rgba(157, 23, 77, 0.12);
 }
 
+.error-card {
+  padding: 1.5rem;
+}
+
 .photo-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns:
+    repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.5rem;
   background: #fce7f3;
 }
@@ -322,7 +463,8 @@ watch(
 }
 
 .username,
-.location {
+.location,
+.fame {
   color: #9d174d;
 }
 
@@ -331,10 +473,12 @@ watch(
   white-space: pre-wrap;
 }
 
-.tags {
+.tags,
+.profile-actions,
+.report-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .tag {
@@ -348,5 +492,90 @@ watch(
   margin-top: 1.5rem;
   color: #be185d;
   font-weight: 700;
+}
+
+.profile-actions {
+  margin-top: 1.5rem;
+}
+
+.profile-actions button,
+.report-actions button {
+  padding: 0.8rem 1.2rem;
+  border: 0;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.profile-actions button:disabled,
+.report-actions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.like-button,
+.submit-report {
+  color: white;
+  background: #db2777;
+}
+
+.report-button {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.block-button {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.cancel-button {
+  color: #4b5563;
+  background: #e5e7eb;
+}
+
+.alert {
+  margin-top: 1.25rem;
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+}
+
+.error {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.success {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.report-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border-radius: 16px;
+  background: #fff7ed;
+}
+
+.report-form label {
+  color: #831843;
+  font-weight: 700;
+}
+
+.report-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.9rem;
+  border: 1px solid #f5b8d2;
+  border-radius: 12px;
+  font: inherit;
+  resize: vertical;
+}
+
+.report-form small {
+  color: #6b7280;
 }
 </style>

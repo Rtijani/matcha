@@ -11,9 +11,10 @@ import ForgotPasswordView from "../views/ForgotPasswordView.vue";
 import ResetPasswordView from "../views/ResetPasswordView.vue";
 import ProfileView from "../views/ProfileView.vue";
 import PublicProfileView from "../views/PublicProfileView.vue";
-
-
-
+import SearchView from "../views/SearchView.vue";
+import ActivityView from "../views/ActivityView.vue";
+import NotificationsView from "../views/NotificationsView.vue";
+import ChatView from "../views/ChatView.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -83,10 +84,39 @@ export const router = createRouter({
       meta: { requiresAuth: true },
     },
 
-     {
+    {
       path: "/:pathMatch(.*)*",
       redirect: "/",
     },
+
+    {
+      path: "/search",
+      name: "search",
+      component: SearchView,
+      meta: { requiresAuth: true },
+    },
+
+    {
+      path: "/activity",
+      name: "activity",
+      component: ActivityView,
+      meta: { requiresAuth: true },
+    },
+
+    {
+      path: "/notifications",
+      name: "notifications",
+      component: NotificationsView,
+      meta: {requiresAuth: true},
+    },
+
+    {
+      path: "/chat",
+      name: "chat",
+      component: ChatView,
+      meta: { requiresAuth: true },
+    },
+
   ],
 });
 
