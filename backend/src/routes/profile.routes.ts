@@ -13,6 +13,9 @@ import { authenticate } from "../middleware/authenticate.js";
 import {
   refreshProfileCompletion,
 } from "../services/profile-completion.service.js";
+import {
+  locateByIp,
+} from "../services/geolocation.service.js";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -87,18 +90,18 @@ const profileSchema = z
     city: z
       .string()
       .trim()
-      .min(1)
       .max(150)
       .nullable()
-      .optional(),
+      .optional()
+      .transform((value) => (value ? value : undefined)),
 
     neighborhood: z
       .string()
       .trim()
-      .min(1)
       .max(150)
       .nullable()
-      .optional(),
+      .optional()
+      .transform((value) => (value ? value : undefined)),
   })
   .superRefine((profile, context) => {
     if (
@@ -156,6 +159,22 @@ export const profileRoutes = async (
   /*
    * Get the authenticated user's full profile.
    */
+  /*
+   * Best-effort location lookup from the request's IP address, used
+   * as a fallback when the user declines the browser's GPS prompt.
+   */
+  app.get(
+    "/geolocate",
+    {
+      preHandler: authenticate,
+    },
+    async (request, reply) => {
+      const location = await locateByIp(request.ip);
+
+      return reply.status(200).send({ location });
+    },
+  );
+
   app.get(
     "/me",
     {

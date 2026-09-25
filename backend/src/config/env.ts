@@ -13,7 +13,7 @@ const environmentSchema = z.object({
 
   BACKEND_PORT: z.coerce.number().int().positive().default(3000),
   BACKEND_HOST: z.string().default("0.0.0.0"),
-  FRONTEND_URL: z.string().url().default("http://localhost:5174"),
+  FRONTEND_URL: z.string().url().default("http://localhost:5175"),
 
   POSTGRES_HOST: z.string().default("localhost"),
   POSTGRES_PORT: z.coerce.number().int().positive().default(5433),

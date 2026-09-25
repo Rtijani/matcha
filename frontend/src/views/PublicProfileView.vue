@@ -31,6 +31,8 @@ interface PublicProfile {
   fameRating: number;
   city: string | null;
   neighborhood: string | null;
+  isOnline: boolean;
+  lastConnection: string | null;
   tags: PublicTag[];
   pictures: PublicPicture[];
   relationship: {
@@ -52,6 +54,33 @@ const actionBusy = ref(false);
 
 const showReportForm = ref(false);
 const reportReason = ref("");
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatOnlineStatus(
+  target: PublicProfile,
+): string {
+  if (target.isOnline) {
+    return "Online now";
+  }
+
+  if (!target.lastConnection) {
+    return "Offline";
+  }
+
+  return `Last seen ${formatDate(target.lastConnection)}`;
+}
 
 async function loadProfile(): Promise<void> {
   const userId = route.params.userId;
@@ -249,6 +278,14 @@ watch(
 
         <p class="username">
           @{{ profile.username }}
+        </p>
+
+        <p
+          class="status"
+          :class="{ online: profile.isOnline }"
+        >
+          <span class="status-dot" />
+          {{ formatOnlineStatus(profile) }}
         </p>
 
         <p v-if="profile.city" class="location">
@@ -466,6 +503,29 @@ watch(
 .location,
 .fame {
   color: #9d174d;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #9ca3af;
+  font-weight: 600;
+}
+
+.status-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.status.online {
+  color: #16a34a;
+}
+
+.status.online .status-dot {
+  background: #16a34a;
 }
 
 .biography {

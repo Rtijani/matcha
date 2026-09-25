@@ -10,20 +10,18 @@ Reminder: any console error/warning or any 5xx response during the defense count
 - [x] Removed `Readme.md`
 - [x] Backend returns `isOnline` on public profiles
 
-## Fresh install (the evaluator redoes the whole installation)
+## Done (this pass)
 
-- [ ] [.env.example](.env.example): `POSTGRES_PORT` must be `5433` (Docker maps `5433:5432`)
-- [ ] [.env.example](.env.example): `JWT_SECRET` / `COOKIE_SECRET` are shorter than 32 characters, so the backend exits on start
-- [ ] Frontend port mismatch: Vite runs on `5175` ([vite.config.ts](frontend/vite.config.ts)), README now says `5175`, but `FRONTEND_URL` is still `5174` in [.env.example](.env.example) and [env.ts](backend/src/config/env.ts), so email verification/reset links point to the wrong port
-- [ ] `make test` fails without a `.env`: importing `env.ts` calls `process.exit(1)` (2 of 3 test files crash). Either make the services independent of `env.ts` or document that `.env` is required first.
+- [x] [.env.example](.env.example): `POSTGRES_PORT` fixed to `5433`, `JWT_SECRET`/`COOKIE_SECRET` now ≥32 chars
+- [x] `FRONTEND_URL` fixed to `5175` in [.env.example](.env.example) and [env.ts](backend/src/config/env.ts)
+- [x] `make test` no longer needs a `.env`: added [vitest.config.ts](backend/vitest.config.ts) + [vitest.setup.ts](backend/vitest.setup.ts) that inject dummy env vars before tests import `env.ts`
+- [x] **Geolocation fallback**: new [geolocation.service.ts](backend/src/services/geolocation.service.ts) (offline `geoip-lite` + chained free IP-geolocation APIs) behind `GET /api/profile/geolocate`; [ProfileView.vue](frontend/src/views/ProfileView.vue) calls it automatically when the browser GPS prompt is denied/unsupported. Also fixed a related bug where saving a profile with an empty city (GPS/IP-only location) was rejected by validation.
+- [x] **Suggestions sort & filter**: client-side filter/sort controls (age, location, fame, common tags, distance, best match) added to [HomeView.vue](frontend/src/views/HomeView.vue)
+- [x] **Suggestion weighting**: replaced the lexicographic `ORDER BY` with a weighted `match_score` (same city + shared tags + fame + proximity decay) in [discovery.routes.ts](backend/src/routes/discovery.routes.ts)
+- [x] **Public profile**: `isOnline` / `lastConnection` now displayed in [PublicProfileView.vue](frontend/src/views/PublicProfileView.vue)
+- [x] **Incomplete profile**: router guard in [router/index.ts](frontend/src/router/index.ts) redirects to `/profile` until the profile is complete
 
-## Evaluation sheet items not fully met
-
-- [ ] **Geolocation fallback**: if the user refuses GPS, they must still be located (e.g. IP-based lookup on the backend). Currently only manual city entry ([ProfileView.vue](frontend/src/views/ProfileView.vue)).
-- [ ] **Suggestions sort & filter**: the home page suggestion list must be sortable/filterable by age, location, fame rating, tags (search already does it) — [HomeView.vue](frontend/src/views/HomeView.vue)
-- [ ] **Suggestion weighting**: `ORDER BY same_city, distance, common_tags, fame` is lexicographic, so tags and fame almost never matter. Use a weighted score combining distance, common tags and fame ([discovery.routes.ts](backend/src/routes/discovery.routes.ts)).
-- [ ] **Public profile**: show online status, or last connection date/time when offline. Backend returns `isOnline` and `lastConnection`; display both in [PublicProfileView.vue](frontend/src/views/PublicProfileView.vue).
-- [ ] **Incomplete profile**: user should not access the site until the profile is complete. Add a check in the router guard ([router/index.ts](frontend/src/router/index.ts)) redirecting to `/profile`.
+All verified with `npm test` (backend, 9/9 passing without `.env`), `vue-tsc -b` (frontend, no errors), and manually in a browser against seeded data (login, suggestions filters/sort/scoring, IP geolocation fallback with GPS denied, profile-completion redirect, public profile online/last-seen).
 
 ## To verify manually
 
@@ -36,8 +34,8 @@ Reminder: any console error/warning or any 5xx response during the defense count
 
 ## Cleanup
 
-- [ ] Untrack `frontend/tsconfig.tsbuildinfo` and add it to `.gitignore`
-- [ ] README: project structure says `migrations/`, actual folder is `database/migrations/`
+- [x] `frontend/tsconfig.tsbuildinfo` already untracked and gitignored
+- [x] README already says `database/migrations/`
 
 ## Defense preparation (both of us must be able to explain)
 

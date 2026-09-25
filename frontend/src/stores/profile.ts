@@ -39,6 +39,12 @@ export interface Profile {
   pictures: ProfilePicture[];
 }
 
+export interface IpLocation {
+  latitude: number;
+  longitude: number;
+  city: string | null;
+}
+
 export interface UpdateProfilePayload {
   gender: string;
   sexualPreference: string;
@@ -192,6 +198,18 @@ export const useProfileStore = defineStore("profile", () => {
     }
   }
 
+  async function locateByIp(): Promise<IpLocation | null> {
+    try {
+      const response = await api.get<{
+        location: IpLocation | null;
+      }>("/profile/geolocate");
+
+      return response.data.location;
+    } catch {
+      return null;
+    }
+  }
+
   async function fetchAvailableTags(): Promise<void> {
   error.value = "";
 
@@ -243,6 +261,7 @@ return {
   mainPicture,
   fetchProfile,
   fetchAvailableTags,
+  locateByIp,
   updateProfile,
   updateTags,
   uploadPicture,
