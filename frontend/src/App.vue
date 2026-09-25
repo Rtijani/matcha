@@ -56,13 +56,7 @@ onBeforeUnmount(() => {
           <RouterLink to="/search">
             Search
           </RouterLink>
-          
-          <RouterLink
-            to="/chat"
-            class="nav-link"
-          >
-            Chat
-          </RouterLink>
+
           <RouterLink to="/activity">
             Activity
           </RouterLink>
@@ -207,12 +201,8 @@ onBeforeUnmount(() => {
 
   .navigation {
     width: 100%;
-    overflow-x: auto;
-    padding-bottom: 0.35rem;
-  }
-
-  .navigation > * {
-    flex: 0 0 auto;
+    flex-wrap: wrap;
+    row-gap: 0.6rem;
   }
 }
 </style>
