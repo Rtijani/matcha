@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { api, getApiError } from "../services/api";
 import { useAuthStore } from "../stores/auth";
@@ -9,9 +9,12 @@ interface Suggestion {
   username: string;
   firstName: string;
   age: number;
+  fameRating: number;
   biography: string | null;
   city: string | null;
   distanceKm: number | null;
+  commonTags: number;
+  matchScore: number;
   mainPicture: string | null;
 }
 
@@ -20,6 +23,73 @@ const suggestions = ref<Suggestion[]>([]);
 const loading = ref(true);
 const error = ref("");
 const needsProfile = ref(false);
+
+const filters = reactive({
+  minAge: 18,
+  maxAge: 120,
+  minFame: 0,
+  city: "",
+  minCommonTags: 0,
+  sortBy: "match",
+  sortOrder: "desc",
+});
+
+const visibleSuggestions = computed(() => {
+  const filtered = suggestions.value.filter((person) => {
+    if (person.age < filters.minAge || person.age > filters.maxAge) {
+      return false;
+    }
+
+    if (person.fameRating < filters.minFame) {
+      return false;
+    }
+
+    if (person.commonTags < filters.minCommonTags) {
+      return false;
+    }
+
+    if (
+      filters.city.trim() &&
+      !person.city
+        ?.toLowerCase()
+        .includes(filters.city.trim().toLowerCase())
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+  const direction = filters.sortOrder === "asc" ? 1 : -1;
+
+  const sorters: Record<
+    string,
+    (a: Suggestion, b: Suggestion) => number
+  > = {
+    match: (a, b) => (a.matchScore - b.matchScore) * direction,
+    age: (a, b) => (a.age - b.age) * direction,
+    fame: (a, b) => (a.fameRating - b.fameRating) * direction,
+    distance: (a, b) =>
+      ((a.distanceKm ?? Infinity) -
+        (b.distanceKm ?? Infinity)) *
+      direction,
+    tags: (a, b) => (a.commonTags - b.commonTags) * direction,
+  };
+
+  return [...filtered].sort(
+    sorters[filters.sortBy] ?? sorters.match,
+  );
+});
+
+function resetFilters(): void {
+  filters.minAge = 18;
+  filters.maxAge = 120;
+  filters.minFame = 0;
+  filters.city = "";
+  filters.minCommonTags = 0;
+  filters.sortBy = "match";
+  filters.sortOrder = "desc";
+}
 
 async function loadSuggestions(): Promise<void> {
   loading.value = true;
@@ -115,12 +185,101 @@ onMounted(loadSuggestions);
       <p>Check back later or update your profile.</p>
     </section>
 
-    <section v-else class="suggestion-grid">
-      <article
-        v-for="person in suggestions"
-        :key="person.id"
-        class="suggestion-card"
+    <template v-else>
+      <form class="filter-card" @submit.prevent>
+        <div class="filter-grid">
+          <label>
+            Minimum age
+            <input
+              v-model.number="filters.minAge"
+              type="number"
+              min="18"
+              max="120"
+            />
+          </label>
+
+          <label>
+            Maximum age
+            <input
+              v-model.number="filters.maxAge"
+              type="number"
+              min="18"
+              max="120"
+            />
+          </label>
+
+          <label>
+            Minimum fame
+            <input
+              v-model.number="filters.minFame"
+              type="number"
+              min="0"
+              max="100"
+            />
+          </label>
+
+          <label>
+            Location contains
+            <input
+              v-model.trim="filters.city"
+              type="text"
+              placeholder="Le Havre"
+            />
+          </label>
+
+          <label>
+            Minimum common tags
+            <input
+              v-model.number="filters.minCommonTags"
+              type="number"
+              min="0"
+            />
+          </label>
+
+          <label>
+            Sort by
+            <select v-model="filters.sortBy">
+              <option value="match">Best match</option>
+              <option value="age">Age</option>
+              <option value="fame">Fame rating</option>
+              <option value="distance">Distance</option>
+              <option value="tags">Common interests</option>
+            </select>
+          </label>
+
+          <label>
+            Sort direction
+            <select v-model="filters.sortOrder">
+              <option value="desc">Highest first</option>
+              <option value="asc">Lowest first</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="filter-actions">
+          <button
+            type="button"
+            class="reset-button"
+            @click="resetFilters"
+          >
+            Reset filters
+          </button>
+        </div>
+      </form>
+
+      <p
+        v-if="visibleSuggestions.length === 0"
+        class="message-card"
       >
+        No suggestions match these filters.
+      </p>
+
+      <section v-else class="suggestion-grid">
+        <article
+          v-for="person in visibleSuggestions"
+          :key="person.id"
+          class="suggestion-card"
+        >
         <img
           v-if="person.mainPicture"
           :src="person.mainPicture"
@@ -151,8 +310,9 @@ onMounted(loadSuggestions);
             View profile
           </RouterLink>
         </div>
-      </article>
-    </section>
+        </article>
+      </section>
+    </template>
   </main>
 </template>
 
@@ -193,6 +353,55 @@ onMounted(loadSuggestions);
   background: #db2777;
   font-weight: 800;
   text-decoration: none;
+}
+
+.filter-card {
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid #fbcfe8;
+  border-radius: 20px;
+  background: white;
+  box-shadow: 0 12px 30px rgba(157, 23, 77, 0.1);
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+}
+
+.filter-card label {
+  display: grid;
+  gap: 0.45rem;
+  color: #831843;
+  font-weight: 700;
+}
+
+.filter-card input,
+.filter-card select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.8rem;
+  border: 1px solid #f5b8d2;
+  border-radius: 12px;
+  background: #fffafd;
+  font: inherit;
+}
+
+.filter-actions {
+  margin-top: 1.25rem;
+}
+
+.reset-button {
+  padding: 0.8rem 1.2rem;
+  border: 0;
+  border-radius: 12px;
+  color: #9d174d;
+  background: #fce7f3;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .suggestion-grid {

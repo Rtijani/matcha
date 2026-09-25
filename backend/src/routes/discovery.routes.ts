@@ -76,6 +76,7 @@ export const discoveryRoutes = async (
         common_tags: number;
         distance_km: string | null;
         same_city: boolean;
+        match_score: string;
       }>(
         `WITH current_profile AS (
            SELECT
@@ -86,138 +87,153 @@ export const discoveryRoutes = async (
              profiles.city
            FROM profiles
            WHERE profiles.user_id = $1
-         )
-         SELECT
-           users.id,
-           users.username,
-           users.first_name,
-           users.last_name,
-           profiles.gender,
-           profiles.biography,
-           EXTRACT(
-             YEAR FROM age(
-               CURRENT_DATE,
-               profiles.birth_date
-             )
-           )::integer AS age,
-           profiles.fame_rating,
-           profiles.city,
-           profiles.neighborhood,
-           profile_pictures.file_path
-             AS main_picture,
+         ),
+         candidates AS (
+           SELECT
+             users.id,
+             users.username,
+             users.first_name,
+             users.last_name,
+             users.created_at,
+             profiles.gender,
+             profiles.biography,
+             profiles.fame_rating,
+             profiles.city,
+             profiles.neighborhood,
+             EXTRACT(
+               YEAR FROM age(
+                 CURRENT_DATE,
+                 profiles.birth_date
+               )
+             )::integer AS age,
+             profile_pictures.file_path
+               AS main_picture,
 
-           (
-             SELECT COUNT(*)::integer
-             FROM user_tags candidate_tags
-             INNER JOIN user_tags current_tags
-               ON current_tags.tag_id =
-                  candidate_tags.tag_id
-             WHERE candidate_tags.user_id =
-               users.id
-               AND current_tags.user_id = $1
-           ) AS common_tags,
+             (
+               SELECT COUNT(*)::integer
+               FROM user_tags candidate_tags
+               INNER JOIN user_tags current_tags
+                 ON current_tags.tag_id =
+                    candidate_tags.tag_id
+               WHERE candidate_tags.user_id =
+                 users.id
+                 AND current_tags.user_id = $1
+             ) AS common_tags,
 
-           CASE
-             WHEN
-               current_profile.latitude IS NOT NULL
-               AND current_profile.longitude IS NOT NULL
-               AND profiles.latitude IS NOT NULL
-               AND profiles.longitude IS NOT NULL
-             THEN (
-               6371 * 2 * ASIN(
-                 SQRT(
-                   POWER(
-                     SIN(
+             CASE
+               WHEN
+                 current_profile.latitude IS NOT NULL
+                 AND current_profile.longitude IS NOT NULL
+                 AND profiles.latitude IS NOT NULL
+                 AND profiles.longitude IS NOT NULL
+               THEN (
+                 6371 * 2 * ASIN(
+                   SQRT(
+                     POWER(
+                       SIN(
+                         RADIANS(
+                           profiles.latitude -
+                           current_profile.latitude
+                         ) / 2
+                       ),
+                       2
+                     )
+                     +
+                     COS(
                        RADIANS(
-                         profiles.latitude -
                          current_profile.latitude
-                       ) / 2
-                     ),
-                     2
-                   )
-                   +
-                   COS(
-                     RADIANS(
-                       current_profile.latitude
+                       )
                      )
-                   )
-                   *
-                   COS(
-                     RADIANS(
-                       profiles.latitude
-                     )
-                   )
-                   *
-                   POWER(
-                     SIN(
+                     *
+                     COS(
                        RADIANS(
-                         profiles.longitude -
-                         current_profile.longitude
-                       ) / 2
-                     ),
-                     2
+                         profiles.latitude
+                       )
+                     )
+                     *
+                     POWER(
+                       SIN(
+                         RADIANS(
+                           profiles.longitude -
+                           current_profile.longitude
+                         ) / 2
+                       ),
+                       2
+                     )
                    )
                  )
                )
-             )
-             ELSE NULL
-           END AS distance_km,
+               ELSE NULL
+             END AS distance_km,
 
+             (
+               current_profile.city IS NOT NULL
+               AND profiles.city IS NOT NULL
+               AND lower(current_profile.city) =
+                   lower(profiles.city)
+             ) AS same_city
+
+           FROM users
+           INNER JOIN profiles
+             ON profiles.user_id = users.id
+
+           CROSS JOIN current_profile
+
+           LEFT JOIN profile_pictures
+             ON profile_pictures.user_id = users.id
+             AND profile_pictures.is_profile_picture =
+                 TRUE
+
+           WHERE users.id <> $1
+             AND users.is_verified = TRUE
+             AND users.is_profile_complete = TRUE
+
+             AND (
+               current_profile.sexual_preference =
+                 'everyone'
+               OR current_profile.sexual_preference =
+                  profiles.gender
+             )
+
+             AND (
+               profiles.sexual_preference = 'everyone'
+               OR profiles.sexual_preference =
+                  current_profile.gender
+             )
+
+             AND NOT EXISTS (
+               SELECT 1
+               FROM blocks
+               WHERE (
+                 blocker_id = $1
+                 AND blocked_id = users.id
+               )
+               OR (
+                 blocker_id = users.id
+                 AND blocked_id = $1
+               )
+             )
+         )
+         -- Weighted match score (higher is better), combining:
+         --   +30 if same city
+         --   +10 per shared tag (capped at 5 tags = 50 max)
+         --   fame_rating * 0.5 (max 50, fame_rating is 0-100)
+         --   proximity bonus up to 40, decaying linearly to 0 at 200km
+         SELECT
+           *,
            (
-             current_profile.city IS NOT NULL
-             AND profiles.city IS NOT NULL
-             AND lower(current_profile.city) =
-                 lower(profiles.city)
-           ) AS same_city
-
-         FROM users
-         INNER JOIN profiles
-           ON profiles.user_id = users.id
-
-         CROSS JOIN current_profile
-
-         LEFT JOIN profile_pictures
-           ON profile_pictures.user_id = users.id
-           AND profile_pictures.is_profile_picture =
-               TRUE
-
-         WHERE users.id <> $1
-           AND users.is_verified = TRUE
-           AND users.is_profile_complete = TRUE
-
-           AND (
-             current_profile.sexual_preference =
-               'everyone'
-             OR current_profile.sexual_preference =
-                profiles.gender
-           )
-
-           AND (
-             profiles.sexual_preference = 'everyone'
-             OR profiles.sexual_preference =
-                current_profile.gender
-           )
-
-           AND NOT EXISTS (
-             SELECT 1
-             FROM blocks
-             WHERE (
-               blocker_id = $1
-               AND blocked_id = users.id
-             )
-             OR (
-               blocker_id = users.id
-               AND blocked_id = $1
-             )
-           )
-
+             CASE WHEN same_city THEN 30 ELSE 0 END
+             + LEAST(common_tags, 5) * 10
+             + fame_rating * 0.5
+             + CASE
+                 WHEN distance_km IS NULL THEN 0
+                 ELSE GREATEST(0, 40 - distance_km * 0.2)
+               END
+           ) AS match_score
+         FROM candidates
          ORDER BY
-           same_city DESC,
-           distance_km ASC NULLS LAST,
-           common_tags DESC,
-           profiles.fame_rating DESC,
-           users.created_at DESC
-
+           match_score DESC,
+           created_at DESC
          LIMIT 100`,
         [request.user.sub],
       );
@@ -245,6 +261,9 @@ export const discoveryRoutes = async (
                       profile.distance_km,
                     ).toFixed(1),
                   ),
+            matchScore: Number(
+              Number(profile.match_score).toFixed(1),
+            ),
             mainPicture:
               profile.main_picture === null
                 ? null

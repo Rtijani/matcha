@@ -148,5 +148,15 @@ router.beforeEach(async (to) => {
     };
   }
 
+  if (
+    auth.isAuthenticated &&
+    auth.user?.isProfileComplete === false &&
+    to.name !== "profile"
+  ) {
+    return {
+      name: "profile",
+    };
+  }
+
   return true;
 });

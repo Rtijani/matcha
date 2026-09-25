@@ -184,17 +184,37 @@ async function saveProfile(): Promise<void> {
     locationConsent: form.locationConsent,
     latitude: form.latitude,
     longitude: form.longitude,
-    city: form.city,
-    neighborhood: form.neighborhood,
+    city: form.city.trim() || undefined,
+    neighborhood: form.neighborhood.trim() || undefined,
   });
+}
+
+async function useApproximateLocation(): Promise<void> {
+  const location = await profileStore.locateByIp();
+
+  if (!location) {
+    profileStore.error =
+      "Your location could not be determined automatically. Please enter your city manually.";
+    return;
+  }
+
+  form.latitude = location.latitude;
+  form.longitude = location.longitude;
+  form.locationConsent = true;
+
+  if (location.city && !form.city) {
+    form.city = location.city;
+  }
+
+  profileStore.error =
+    "Precise location unavailable — using an approximate location based on your network instead.";
 }
 
 function useCurrentLocation(): void {
   profileStore.error = "";
 
   if (!navigator.geolocation) {
-    profileStore.error =
-      "Geolocation is not supported by this browser.";
+    void useApproximateLocation();
     return;
   }
 
@@ -205,8 +225,7 @@ function useCurrentLocation(): void {
       form.locationConsent = true;
     },
     () => {
-      profileStore.error =
-        "Your location could not be obtained. Please allow location access.";
+      void useApproximateLocation();
     },
   );
 }
