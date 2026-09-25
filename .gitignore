@@ -6,7 +6,9 @@ uploads/
 *.log
 .DS_Store
 
-
+backups/
+*.sql
+*.dump
 test-images/
 
 frontend/tsconfig.tsbuildinfo

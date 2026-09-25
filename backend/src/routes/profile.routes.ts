@@ -174,7 +174,24 @@ export const profileRoutes = async (
       return reply.status(200).send({ location });
     },
   );
+  app.get(
+  "/location/approximate",
+  {
+    preHandler: authenticate,
+  },
+  async (request, reply) => {
+    const location =
+      await locateByIp(request.ip);
 
+    /*
+     * Failure to determine an IP location is an
+     * expected situation, not a server crash.
+     */
+    return reply.status(200).send({
+      location,
+    });
+  },
+);
   app.get(
     "/me",
     {
