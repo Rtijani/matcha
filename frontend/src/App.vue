@@ -56,7 +56,13 @@ onBeforeUnmount(() => {
           <RouterLink to="/search">
             Search
           </RouterLink>
-
+          
+          <RouterLink
+            to="/chat"
+            class="nav-link"
+          >
+            Chat
+          </RouterLink>
           <RouterLink to="/activity">
             Activity
           </RouterLink>
