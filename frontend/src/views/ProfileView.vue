@@ -278,20 +278,6 @@ onBeforeUnmount(() => {
         Loading your profile...
       </p>
 
-      <p
-        v-if="profileStore.error"
-        class="alert error"
-      >
-        {{ profileStore.error }}
-      </p>
-
-      <p
-        v-if="profileStore.successMessage"
-        class="alert success"
-      >
-        {{ profileStore.successMessage }}
-      </p>
-
       <section
         v-if="profileStore.profile"
         class="pictures-section"
@@ -584,9 +570,9 @@ onBeforeUnmount(() => {
             "
             class="location-result"
           >
-            Location recorded:
-            {{ form.latitude.toFixed(4) }},
-            {{ form.longitude.toFixed(4) }}
+            ✓ Location saved{{
+              form.city ? ` — ${form.city}` : ""
+            }}
           </p>
         </section>
 
@@ -603,6 +589,43 @@ onBeforeUnmount(() => {
         </button>
       </form>
     </section>
+
+    <div
+      v-if="profileStore.error || profileStore.successMessage"
+      class="toast-container"
+    >
+      <p
+        v-if="profileStore.error"
+        class="alert error"
+      >
+        {{ profileStore.error }}
+
+        <button
+          type="button"
+          class="toast-dismiss"
+          aria-label="Dismiss"
+          @click="profileStore.error = ''"
+        >
+          ✕
+        </button>
+      </p>
+
+      <p
+        v-if="profileStore.successMessage"
+        class="alert success"
+      >
+        {{ profileStore.successMessage }}
+
+        <button
+          type="button"
+          class="toast-dismiss"
+          aria-label="Dismiss"
+          @click="profileStore.successMessage = ''"
+        >
+          ✕
+        </button>
+      </p>
+    </div>
   </main>
 </template>
 
@@ -641,13 +664,17 @@ onBeforeUnmount(() => {
 }
 
 .completion-badge {
-  align-self: flex-start;
+  position: fixed;
+  z-index: 150;
+  top: 88px;
+  right: 1.25rem;
   padding: 0.6rem 1rem;
   border-radius: 999px;
   color: #9f1239;
   background: #ffe4e6;
   font-weight: 700;
   white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
 }
 
 .completion-badge.complete {
@@ -743,9 +770,25 @@ small {
   opacity: 0.6;
 }
 
+.toast-container {
+  position: fixed;
+  z-index: 200;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  left: 1.25rem;
+  display: grid;
+  gap: 0.6rem;
+  justify-items: end;
+}
+
 .alert {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  max-width: min(420px, 100%);
   padding: 0.9rem 1rem;
   border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
 }
 
 .error {
@@ -756,6 +799,21 @@ small {
 .success {
   color: #166534;
   background: #dcfce7;
+}
+
+.toast-dismiss {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.toast-dismiss:hover {
+  opacity: 1;
 }
 
 .location-result {
