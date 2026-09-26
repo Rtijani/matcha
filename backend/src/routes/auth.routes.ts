@@ -32,7 +32,7 @@ const registrationSchema = z.object({
 
   password: z
     .string()
-    .min(12, "Password must contain at least 12 characters")
+    .min(6, "Password must contain at least 6 characters")
     .max(128),
 });
 
@@ -72,7 +72,7 @@ const resetPasswordSchema = z.object({
 
   password: z
     .string()
-    .min(12, "Password must contain at least 12 characters")
+    .min(6, "Password must contain at least 6 characters")
     .max(128),
 });
 

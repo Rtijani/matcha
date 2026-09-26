@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: install up migrate seed dev build test stop clean status  mailpit mailpit-logs
+.PHONY: install up migrate seed dev test stop clean status  mailpit mailpit-logs harshed-password
 
 install:
 	cd backend && npm install
@@ -33,10 +33,6 @@ dev: migrate
 	(cd frontend && npm run dev) & frontend_pid=$$!; \
 	wait
 
-build:
-	cd backend && npm run build
-	cd frontend && npm run build
-
 test:
 	cd backend && npm test
 
@@ -58,3 +54,14 @@ mailpit:
 
 mailpit-logs:
 	docker logs --tail 100 matcha_mailpit
+
+	
+harshed-password:
+	docker exec matcha_postgres sh -c \
+	'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+	SELECT
+	username,
+	left(password_hash, 20) AS hash_prefix
+	FROM users
+	LIMIT 5;
+	"'
