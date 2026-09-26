@@ -368,7 +368,7 @@ make build
 make dev
 ```
 
-Open the frontend at `http://localhost:5174`.
+Open the frontend at `http://localhost:5175`.
 
 ## Security considerations
 

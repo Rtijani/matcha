@@ -157,23 +157,9 @@ export const profileRoutes = async (
   app: FastifyInstance,
 ): Promise<void> => {
   /*
-   * Get the authenticated user's full profile.
-   */
-  /*
    * Best-effort location lookup from the request's IP address, used
    * as a fallback when the user declines the browser's GPS prompt.
    */
-  app.get(
-    "/geolocate",
-    {
-      preHandler: authenticate,
-    },
-    async (request, reply) => {
-      const location = await locateByIp(request.ip);
-
-      return reply.status(200).send({ location });
-    },
-  );
   app.get(
   "/location/approximate",
   {
@@ -192,6 +178,10 @@ export const profileRoutes = async (
     });
   },
 );
+
+  /*
+   * Get the authenticated user's full profile.
+   */
   app.get(
     "/me",
     {
