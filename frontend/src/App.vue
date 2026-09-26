@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   onBeforeUnmount,
+  ref,
   watch,
 } from "vue";
 import {
@@ -15,7 +16,14 @@ const auth = useAuthStore();
 const notificationStore = useNotificationStore();
 const router = useRouter();
 
+const menuOpen = ref(false);
+
+const closeMenu = (): void => {
+  menuOpen.value = false;
+};
+
 const logout = async (): Promise<void> => {
+  closeMenu();
   notificationStore.stopRealtime();
   await auth.logout();
   await router.push("/login");
@@ -35,6 +43,10 @@ watch(
   },
 );
 
+router.afterEach(() => {
+  closeMenu();
+});
+
 onBeforeUnmount(() => {
   notificationStore.stopRealtime();
 });
@@ -47,27 +59,43 @@ onBeforeUnmount(() => {
         Matcha
       </RouterLink>
 
-      <nav class="navigation">
+      <button
+        type="button"
+        class="menu-toggle"
+        :aria-expanded="menuOpen"
+        aria-label="Toggle navigation menu"
+        @click="menuOpen = !menuOpen"
+      >
+        <span />
+        <span />
+        <span />
+      </button>
+
+      <nav
+        class="navigation"
+        :class="{ open: menuOpen }"
+      >
         <template v-if="auth.isAuthenticated">
-          <RouterLink to="/">
+          <RouterLink to="/" @click="closeMenu">
             Discover
           </RouterLink>
 
-          <RouterLink to="/search">
+          <RouterLink to="/search" @click="closeMenu">
             Search
           </RouterLink>
 
-          <RouterLink to="/activity">
+          <RouterLink to="/activity" @click="closeMenu">
             Activity
           </RouterLink>
 
-          <RouterLink to="/chat">
+          <RouterLink to="/chat" @click="closeMenu">
             Messages
           </RouterLink>
 
           <RouterLink
             to="/notifications"
             class="notification-link"
+            @click="closeMenu"
           >
             Notifications
 
@@ -83,7 +111,7 @@ onBeforeUnmount(() => {
             </span>
           </RouterLink>
 
-          <RouterLink to="/profile">
+          <RouterLink to="/profile" @click="closeMenu">
             Profile
           </RouterLink>
 
@@ -101,11 +129,11 @@ onBeforeUnmount(() => {
         </template>
 
         <template v-else>
-          <RouterLink to="/login">
+          <RouterLink to="/login" @click="closeMenu">
             Login
           </RouterLink>
 
-          <RouterLink to="/register">
+          <RouterLink to="/register" @click="closeMenu">
             Register
           </RouterLink>
         </template>
@@ -140,6 +168,27 @@ onBeforeUnmount(() => {
   font-size: 1.6rem;
   font-weight: 900;
   text-decoration: none;
+}
+
+.menu-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.menu-toggle span {
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  background: #831843;
 }
 
 .navigation {
@@ -195,14 +244,27 @@ onBeforeUnmount(() => {
 
 @media (max-width: 950px) {
   .header {
-    align-items: flex-start;
-    flex-direction: column;
+    flex-wrap: wrap;
+  }
+
+  .menu-toggle {
+    display: flex;
   }
 
   .navigation {
-    width: 100%;
-    flex-wrap: wrap;
-    row-gap: 0.6rem;
+    display: none;
+    flex-basis: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.9rem;
+    order: 3;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #fbcfe8;
+  }
+
+  .navigation.open {
+    display: flex;
   }
 }
 </style>

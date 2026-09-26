@@ -79,7 +79,22 @@ export const useProfileStore = defineStore(
       ref<AvailableTag[]>([]);
 
     const loading = ref(false);
-    const saving = ref(false);
+
+    /*
+     * Separate flags per action: these actions can be
+     * triggered independently and in close succession
+     * (upload a picture, then save tags, then save the
+     * form), so a single shared "saving" flag would let
+     * one action's completion disable/enable buttons that
+     * belong to a different, still-pending action.
+     */
+    const savingProfile = ref(false);
+    const savingTags = ref(false);
+    const uploadingPicture = ref(false);
+    const settingMainPicture = ref(false);
+    const deletingPicture = ref(false);
+    const locating = ref(false);
+
     const error = ref("");
     const successMessage = ref("");
 
@@ -131,7 +146,7 @@ export const useProfileStore = defineStore(
 
     async function locateByIp():
     Promise<ApproximateLocation | null> {
-    saving.value = true;
+    locating.value = true;
     error.value = "";
 
     try {
@@ -151,32 +166,31 @@ export const useProfileStore = defineStore(
 
       return null;
     } finally {
-      saving.value = false;
+      locating.value = false;
     }
   }
 
     async function updateProfile(
       payload: UpdateProfilePayload,
     ): Promise<boolean> {
-      saving.value = true;
+      savingProfile.value = true;
       error.value = "";
       successMessage.value = "";
 
       try {
-        const response =
-          await api.put<{
-            profile: Profile;
-          }>(
-            "/profile/me",
-            payload,
-          );
-
-        profile.value =
-          response.data.profile;
-
-        synchronizeProfileCompletion(
-          response.data.profile,
+        await api.put(
+          "/profile/me",
+          payload,
         );
+
+        /*
+         * The PUT response only echoes the columns that
+         * were just written (no pictures/tags, snake_case
+         * keys) — nothing shaped like the full Profile
+         * the rest of the app expects. Refetch the
+         * canonical shape instead of trusting it directly.
+         */
+        await fetchProfile();
 
         successMessage.value =
           "Your profile was saved successfully.";
@@ -188,7 +202,7 @@ export const useProfileStore = defineStore(
 
         return false;
       } finally {
-        saving.value = false;
+        savingProfile.value = false;
       }
     }
 
@@ -213,7 +227,7 @@ export const useProfileStore = defineStore(
     async function updateTags(
       tags: string[],
     ): Promise<boolean> {
-      saving.value = true;
+      savingTags.value = true;
       error.value = "";
       successMessage.value = "";
 
@@ -241,14 +255,14 @@ export const useProfileStore = defineStore(
 
         return false;
       } finally {
-        saving.value = false;
+        savingTags.value = false;
       }
     }
 
     async function uploadPicture(
       file: File,
     ): Promise<boolean> {
-      saving.value = true;
+      uploadingPicture.value = true;
       error.value = "";
       successMessage.value = "";
 
@@ -278,14 +292,14 @@ export const useProfileStore = defineStore(
 
         return false;
       } finally {
-        saving.value = false;
+        uploadingPicture.value = false;
       }
     }
 
     async function setMainPicture(
       pictureId: string,
     ): Promise<boolean> {
-      saving.value = true;
+      settingMainPicture.value = true;
       error.value = "";
       successMessage.value = "";
 
@@ -306,14 +320,14 @@ export const useProfileStore = defineStore(
 
         return false;
       } finally {
-        saving.value = false;
+        settingMainPicture.value = false;
       }
     }
 
     async function deletePicture(
       pictureId: string,
     ): Promise<boolean> {
-      saving.value = true;
+      deletingPicture.value = true;
       error.value = "";
       successMessage.value = "";
 
@@ -334,7 +348,7 @@ export const useProfileStore = defineStore(
 
         return false;
       } finally {
-        saving.value = false;
+        deletingPicture.value = false;
       }
     }
 
@@ -342,7 +356,12 @@ export const useProfileStore = defineStore(
       profile,
       availableTags,
       loading,
-      saving,
+      savingProfile,
+      savingTags,
+      uploadingPicture,
+      settingMainPicture,
+      deletingPicture,
+      locating,
       error,
       successMessage,
       mainPicture,

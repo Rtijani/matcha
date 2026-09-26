@@ -336,7 +336,10 @@ onBeforeUnmount(() => {
                 v-if="!picture.isProfilePicture"
                 type="button"
                 class="small-button"
-                :disabled="profileStore.saving"
+                :disabled="
+                  profileStore.settingMainPicture ||
+                  profileStore.deletingPicture
+                "
                 @click="
                   profileStore.setMainPicture(picture.id)
                 "
@@ -347,7 +350,10 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="small-button delete-button"
-                :disabled="profileStore.saving"
+                :disabled="
+                  profileStore.settingMainPicture ||
+                  profileStore.deletingPicture
+                "
                 @click="removePicture(picture.id)"
               >
                 Delete
@@ -389,12 +395,13 @@ onBeforeUnmount(() => {
             type="button"
             class="secondary-button"
             :disabled="
-              !selectedPicture || profileStore.saving
+              !selectedPicture ||
+              profileStore.uploadingPicture
             "
             @click="uploadSelectedPicture"
           >
             {{
-              profileStore.saving
+              profileStore.uploadingPicture
                 ? "Uploading..."
                 : "Upload picture"
             }}
@@ -451,12 +458,12 @@ onBeforeUnmount(() => {
     class="secondary-button"
     :disabled="
       selectedTags.length === 0 ||
-      profileStore.saving
+      profileStore.savingTags
     "
     @click="saveTags"
   >
     {{
-      profileStore.saving
+      profileStore.savingTags
         ? "Saving..."
         : "Save interests"
     }}
@@ -586,10 +593,10 @@ onBeforeUnmount(() => {
         <button
           class="primary-button"
           type="submit"
-          :disabled="profileStore.saving"
+          :disabled="profileStore.savingProfile"
         >
           {{
-            profileStore.saving
+            profileStore.savingProfile
               ? "Saving..."
               : "Save profile"
           }}
