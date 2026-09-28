@@ -51,6 +51,7 @@ const searchSchema = z
         "distance",
         "fame",
         "tags",
+        "location",
       ])
       .default("fame"),
 
@@ -209,8 +210,8 @@ export const searchRoutes = async (
         values.push(city);
 
         filters.push(
-          `lower(profiles.city) =
-             lower($${values.length})`,
+          `(lower(profiles.city) = lower($${values.length})
+            OR lower(profiles.neighborhood) = lower($${values.length}))`,
         );
       }
 
@@ -245,6 +246,8 @@ export const searchRoutes = async (
         fame:
           `profiles.fame_rating ${direction}`,
         tags: `common_tags ${direction}`,
+        location:
+          `lower(COALESCE(profiles.city, profiles.neighborhood)) ${direction} NULLS LAST`,
       };
 
       const orderBy = orderColumns[sortBy];
@@ -262,6 +265,7 @@ export const searchRoutes = async (
         neighborhood: string | null;
         main_picture: string | null;
         common_tags: number;
+        common_tag_names: string[];
         distance_km: string | null;
       }>(
         `WITH current_profile AS (
@@ -305,6 +309,18 @@ export const searchRoutes = async (
                users.id
                AND current_tags.user_id = $1
            ) AS common_tags,
+
+           ARRAY(
+             SELECT tags.name
+             FROM user_tags candidate_tags
+             INNER JOIN user_tags current_tags
+               ON current_tags.tag_id = candidate_tags.tag_id
+             INNER JOIN tags
+               ON tags.id = candidate_tags.tag_id
+             WHERE candidate_tags.user_id = users.id
+               AND current_tags.user_id = $1
+             ORDER BY tags.name
+           ) AS common_tag_names,
 
            CASE
              WHEN
@@ -405,7 +421,7 @@ export const searchRoutes = async (
             neighborhood:
               profile.neighborhood,
             commonTags:
-              profile.common_tags,
+              profile.common_tag_names,
             distanceKm:
               profile.distance_km === null
                 ? null
@@ -424,4 +440,3 @@ export const searchRoutes = async (
     },
   );
 };
-

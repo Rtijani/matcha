@@ -5,8 +5,9 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  watch,
 } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRoute } from "vue-router";
 import { api, getApiError } from "../services/api";
 import { socket } from "../services/socket";
 import { useAuthStore } from "../stores/auth";
@@ -45,6 +46,7 @@ interface SendAcknowledgement {
 }
 
 const auth = useAuthStore();
+const route = useRoute();
 
 const conversations = ref<Conversation[]>([]);
 const activeConversation = ref<Conversation | null>(null);
@@ -145,6 +147,22 @@ async function loadConversations(): Promise<void> {
     loadingConversations.value = false;
   }
 }
+
+function openRequestedConversation(): void {
+  const userId = route.query.userId;
+  if (typeof userId !== "string") return;
+  const conversation = conversations.value.find(
+    (item) => item.user.id === userId,
+  );
+  if (
+    conversation &&
+    activeConversation.value?.user.id !== userId
+  ) {
+    void openConversation(conversation);
+  }
+}
+
+watch(() => route.query.userId, openRequestedConversation);
 
 async function markConversationAsRead(
   userId: string,
@@ -323,6 +341,7 @@ function handleUserStatus(payload: {
 
 onMounted(async () => {
   await loadConversations();
+  openRequestedConversation();
 
   socket.on(
     "chat:message",

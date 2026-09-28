@@ -7,8 +7,9 @@ uploads/
 .DS_Store
 
 backups/
-*.sql
 *.dump
 test-images/
-
+*.sql
+!database/migrations/
+!database/migrations/*.sql
 frontend/tsconfig.tsbuildinfo

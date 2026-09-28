@@ -95,12 +95,9 @@ export const useAuthStore =
 
     const logout =
       async (): Promise<void> => {
-        try {
-          await api.post("/auth/logout");
-        } finally {
-          user.value = null;
-          initialized.value = true;
-        }
+        await api.post("/auth/logout");
+        user.value = null;
+        initialized.value = true;
       };
 
     return {
@@ -114,4 +111,3 @@ export const useAuthStore =
       logout,
     };
   });
-

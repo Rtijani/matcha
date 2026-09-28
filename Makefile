@@ -2,11 +2,10 @@ SHELL := /bin/sh
 
 .PHONY: \
 	install setup demo up migrate seed dev build test verify \
-	stop clean status doctor \
+	stop clean status \
 	mailpit mailpit-logs \
-	db-tables db-migrations db-counts db-users db-profiles \
-	db-fame db-location db-social hashed-password \
-	harshed-password evaluation
+	db-tables  db-counts db-users db-profiles \
+	db-location db-social hashed-password \
 
 install:
 	cd backend && npm install
@@ -71,7 +70,6 @@ evaluation: verify
 	@$(MAKE) hashed-password
 	@echo ""
 	@echo "Automated evaluation checks completed."
-	@echo "Manual browser and two-account tests are still required."
 
 stop:
 	docker compose down
@@ -85,33 +83,6 @@ clean:
 status:
 	docker compose ps
 
-doctor:
-	@echo "Node:"
-	@node --version
-	@echo ""
-	@echo "npm:"
-	@npm --version
-	@echo ""
-	@echo "Docker:"
-	@docker --version
-	@echo ""
-	@echo "Docker Compose:"
-	@docker compose version
-	@echo ""
-	@echo "Git branch:"
-	@git status -sb
-	@echo ""
-	@if [ -f .env ]; then \
-		echo ".env exists."; \
-	else \
-		echo "ERROR: .env is missing."; \
-		exit 1; \
-	fi
-	@echo ""
-	@echo "Important development configuration:"
-	@grep -E \
-		'^(BACKEND_PORT|FRONTEND_URL|POSTGRES_HOST|POSTGRES_PORT|POSTGRES_DB|SMTP_HOST|SMTP_PORT)=' \
-		.env || true
 
 mailpit:
 	docker compose up -d mailpit
@@ -188,29 +159,6 @@ db-profiles: up
 		LIMIT 50; \
 		"'
 
-db-fame: up
-	docker exec matcha_postgres sh -c \
-		'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c " \
-		SELECT \
-			users.username, \
-			COUNT(likes.liker_id) AS received_likes, \
-			profiles.fame_rating, \
-			LEAST( \
-				100, \
-				COUNT(likes.liker_id)::integer * 5 \
-			) AS expected_fame_rating \
-		FROM users \
-		JOIN profiles \
-			ON profiles.user_id = users.id \
-		LEFT JOIN likes \
-			ON likes.liked_id = users.id \
-		GROUP BY \
-			users.id, \
-			profiles.fame_rating \
-		ORDER BY profiles.fame_rating DESC \
-		LIMIT 50; \
-		"'
-
 db-location: up
 	docker exec matcha_postgres sh -c \
 		'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c " \
@@ -249,6 +197,3 @@ hashed-password: up
 		ORDER BY created_at DESC \
 		LIMIT 5; \
 		"'
-
-# Compatibility alias for the previous misspelled command.
-harshed-password: hashed-password

@@ -1,0 +1,545 @@
+diff --git a/backend/src/routes/discovery.routes.ts b/backend/src/routes/discovery.routes.ts
+index c708dbc..52dca71 100644
+--- a/backend/src/routes/discovery.routes.ts
++++ b/backend/src/routes/discovery.routes.ts
+@@ -397,16 +397,25 @@ export const discoveryRoutes = async (
+         file_path: string;
+         is_profile_picture: boolean;
+         position: number;
++        you_liked: boolean;
++        like_count: number;
+       }>(
+         `SELECT
+-           id,
+-           file_path,
+-           is_profile_picture,
+-           position
+-         FROM profile_pictures
+-         WHERE user_id = $1
+-         ORDER BY position`,
+-        [viewedUserId],
++           picture.id,
++           picture.file_path,
++           picture.is_profile_picture,
++           picture.position,
++           EXISTS (
++             SELECT 1 FROM picture_likes mine
++             WHERE mine.picture_id = picture.id
++               AND mine.liker_id = $2
++           ) AS you_liked,
++           (SELECT COUNT(*)::integer FROM picture_likes likes
++            WHERE likes.picture_id = picture.id) AS like_count
++         FROM profile_pictures picture
++         WHERE picture.user_id = $1
++         ORDER BY picture.position`,
++        [viewedUserId, currentUserId],
+       );
+ 
+       const relationshipResult =
+@@ -523,6 +532,8 @@ export const discoveryRoutes = async (
+               isProfilePicture:
+                 picture.is_profile_picture,
+               position: picture.position,
++              youLiked: picture.you_liked,
++              likeCount: picture.like_count,
+             }),
+           ),
+ 
+diff --git a/backend/src/routes/interaction.routes.ts b/backend/src/routes/interaction.routes.ts
+index f043a88..bc4b925 100644
+--- a/backend/src/routes/interaction.routes.ts
++++ b/backend/src/routes/interaction.routes.ts
+@@ -16,6 +16,10 @@ const userParamsSchema = z.object({
+   userId: z.string().uuid("Invalid user ID"),
+ });
+ 
++const pictureParamsSchema = userParamsSchema.extend({
++  pictureId: z.string().uuid("Invalid picture ID"),
++});
++
+ const reportSchema = z.object({
+   reason: z
+     .string()
+@@ -167,17 +171,19 @@ app.post(
+         );
+ 
+       if (insertedLike.rowCount !== 0) {
+-        likeNotification =
+-          await createNotification(
+-            {
+-              recipientId: likedUserId,
+-              actorId: currentUserId,
+-              type: "like",
+-              message:
+-                `${request.user.username} liked your profile`,
+-            },
+-            client,
+-          );
++        if (!connected) {
++          likeNotification =
++            await createNotification(
++              {
++                recipientId: likedUserId,
++                actorId: currentUserId,
++                type: "like",
++                message:
++                  `${request.user.username} liked your profile`,
++              },
++              client,
++            );
++        }
+ 
+         if (connected) {
+           recipientMatchNotification =
+@@ -187,7 +193,7 @@ app.post(
+                 actorId: currentUserId,
+                 type: "match",
+                 message:
+-                  `You matched with ${request.user.username}`,
++                  `${request.user.username} liked your profile — you matched!`,
+               },
+               client,
+             );
+@@ -425,6 +431,191 @@ app.delete(
+     }
+   },
+ );
++/* Picture likes are independent of profile likes and matches. */
++app.post(
++  "/:userId/pictures/:pictureId/like",
++  { preHandler: authenticate },
++  async (request, reply) => {
++    const parsed = pictureParamsSchema.safeParse(request.params);
++    if (!parsed.success) {
++      return reply.status(400).send({ error: "Invalid picture link" });
++    }
++
++    const { userId: ownerId, pictureId } = parsed.data;
++    const likerId = request.user.sub;
++    if (likerId === ownerId) {
++      return reply.status(400).send({ error: "You cannot like your own picture" });
++    }
++
++    const client = await database.connect();
++    try {
++      await client.query("BEGIN");
++
++      const ownPicture = await client.query(
++        `SELECT 1 FROM profile_pictures
++         WHERE user_id = $1 AND is_profile_picture = TRUE
++         LIMIT 1`,
++        [likerId],
++      );
++      if (ownPicture.rowCount === 0) {
++        await client.query("ROLLBACK");
++        return reply.status(403).send({
++          error: "You need a profile picture before liking another picture",
++        });
++      }
++
++      const target = await client.query<{ position: number }>(
++        `SELECT picture.position
++         FROM profile_pictures picture
++         JOIN users owner ON owner.id = picture.user_id
++         WHERE picture.id = $1
++           AND picture.user_id = $2
++           AND owner.is_verified = TRUE
++           AND owner.is_profile_complete = TRUE
++           AND NOT EXISTS (
++             SELECT 1 FROM blocks
++             WHERE (blocker_id = $2 AND blocked_id = $3)
++                OR (blocker_id = $3 AND blocked_id = $2)
++           )
++         FOR UPDATE OF picture`,
++        [pictureId, ownerId, likerId],
++      );
++      const targetPicture = target.rows[0];
++      if (!targetPicture) {
++        await client.query("ROLLBACK");
++        return reply.status(404).send({ error: "Picture not found" });
++      }
++
++      const inserted = await client.query(
++        `INSERT INTO picture_likes (picture_id, liker_id)
++         VALUES ($1, $2)
++         ON CONFLICT (picture_id, liker_id) DO NOTHING
++         RETURNING picture_id`,
++        [pictureId, likerId],
++      );
++
++      const notification = inserted.rowCount
++        ? await createNotification(
++            {
++              recipientId: ownerId,
++              actorId: likerId,
++              type: "picture_like",
++              message: `${request.user.username} liked your profile picture #${targetPicture.position}`,
++              relatedId: pictureId,
++            },
++            client,
++          )
++        : undefined;
++
++      await client.query("COMMIT");
++      if (notification) {
++        emitToUser(ownerId, "notification:new", {
++          id: notification.id,
++          type: notification.type,
++          message: notification.message,
++          actorId: notification.actor_id,
++          relatedId: notification.related_id,
++          createdAt: notification.created_at,
++        });
++      }
++      return reply.status(inserted.rowCount ? 201 : 200).send({
++        message: inserted.rowCount ? "Profile picture liked" : "Profile picture already liked",
++        youLiked: true,
++      });
++    } catch (error) {
++      await client.query("ROLLBACK");
++      throw error;
++    } finally {
++      client.release();
++    }
++  },
++);
++
++app.delete(
++  "/:userId/pictures/:pictureId/like",
++  { preHandler: authenticate },
++  async (request, reply) => {
++    const parsed = pictureParamsSchema.safeParse(request.params);
++    if (!parsed.success) {
++      return reply.status(400).send({ error: "Invalid picture link" });
++    }
++
++    const { userId: ownerId, pictureId } = parsed.data;
++    const likerId = request.user.sub;
++    if (likerId === ownerId) {
++      return reply.status(400).send({ error: "You cannot unlike your own picture" });
++    }
++
++    const client = await database.connect();
++    try {
++      await client.query("BEGIN");
++
++      const target = await client.query<{ position: number }>(
++        `SELECT picture.position
++         FROM profile_pictures picture
++         JOIN users owner ON owner.id = picture.user_id
++         WHERE picture.id = $1
++           AND picture.user_id = $2
++           AND owner.is_verified = TRUE
++           AND owner.is_profile_complete = TRUE
++           AND NOT EXISTS (
++             SELECT 1 FROM blocks
++             WHERE (blocker_id = $2 AND blocked_id = $3)
++                OR (blocker_id = $3 AND blocked_id = $2)
++           )
++         FOR UPDATE OF picture`,
++        [pictureId, ownerId, likerId],
++      );
++      const targetPicture = target.rows[0];
++      if (!targetPicture) {
++        await client.query("ROLLBACK");
++        return reply.status(404).send({ error: "Picture not found" });
++      }
++
++      const deleted = await client.query(
++        `DELETE FROM picture_likes
++         WHERE picture_id = $1 AND liker_id = $2
++         RETURNING picture_id`,
++        [pictureId, likerId],
++      );
++
++      const notification = deleted.rowCount
++        ? await createNotification(
++            {
++              recipientId: ownerId,
++              actorId: likerId,
++              type: "picture_unlike",
++              message: `${request.user.username} unliked your profile picture #${targetPicture.position}`,
++              relatedId: pictureId,
++            },
++            client,
++          )
++        : undefined;
++
++      await client.query("COMMIT");
++      if (notification) {
++        emitToUser(ownerId, "notification:new", {
++          id: notification.id,
++          type: notification.type,
++          message: notification.message,
++          actorId: notification.actor_id,
++          relatedId: notification.related_id,
++          createdAt: notification.created_at,
++        });
++      }
++      return reply.status(200).send({
++        message: deleted.rowCount ? "Profile picture unliked" : "Profile picture was not liked",
++        youLiked: false,
++      });
++    } catch (error) {
++      await client.query("ROLLBACK");
++      throw error;
++    } finally {
++      client.release();
++    }
++  },
++);
++
+     app.post(
+     "/:userId/block",
+     {
+diff --git a/backend/src/services/notification.service.ts b/backend/src/services/notification.service.ts
+index 907a720..60c0a60 100644
+--- a/backend/src/services/notification.service.ts
++++ b/backend/src/services/notification.service.ts
+@@ -6,7 +6,9 @@ export type NotificationType =
+   | "like"
+   | "match"
+   | "message"
+-  | "unlike";
++  | "unlike"
++  | "picture_like"
++  | "picture_unlike";
+ 
+ type DatabaseConnection =
+   | PoolClient
+diff --git a/database/migrations/007_picture_likes.sql b/database/migrations/007_picture_likes.sql
+new file mode 100644
+index 0000000..5420a71
+--- /dev/null
++++ b/database/migrations/007_picture_likes.sql
+@@ -0,0 +1,28 @@
++CREATE TABLE IF NOT EXISTS picture_likes (
++    picture_id UUID NOT NULL
++        REFERENCES profile_pictures(id) ON DELETE CASCADE,
++    liker_id UUID NOT NULL
++        REFERENCES users(id) ON DELETE CASCADE,
++    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    PRIMARY KEY (picture_id, liker_id)
++);
++
++CREATE INDEX IF NOT EXISTS picture_likes_liker_index
++    ON picture_likes(liker_id);
++
++ALTER TABLE notifications
++    DROP CONSTRAINT IF EXISTS notifications_type_check;
++
++ALTER TABLE notifications
++    ADD CONSTRAINT notifications_type_check
++    CHECK (
++        type IN (
++            'profile_view',
++            'like',
++            'match',
++            'message',
++            'unlike',
++            'picture_like',
++            'picture_unlike'
++        )
++    );
+diff --git a/frontend/src/views/NotificationsView.vue b/frontend/src/views/NotificationsView.vue
+index ebdb46c..1979a05 100644
+--- a/frontend/src/views/NotificationsView.vue
++++ b/frontend/src/views/NotificationsView.vue
+@@ -60,6 +60,7 @@ function formatDate(value: string): string {
+ function notificationIcon(type: string): string {
+   switch (type) {
+     case "like":
++    case "picture_like":
+       return "♥";
+     case "match":
+       return "💞";
+@@ -69,6 +70,7 @@ function notificationIcon(type: string): string {
+     case "message":
+       return "💬";
+     case "unlike":
++    case "picture_unlike":
+       return "💔";
+     default:
+       return "🔔";
+@@ -274,6 +276,8 @@ onBeforeUnmount(() => {
+           <div class="message-row">
+             <p>
+               <strong v-if="notification.type === 'message'">Chat message: </strong>
++              <strong v-else-if="notification.type === 'like'">Profile like: </strong>
++              <strong v-else-if="notification.type === 'picture_like'">Picture like: </strong>
+               {{ notification.message }}
+             </p>
+ 
+diff --git a/frontend/src/views/PublicProfileView.vue b/frontend/src/views/PublicProfileView.vue
+index 1d9f4de..e6606f1 100644
+--- a/frontend/src/views/PublicProfileView.vue
++++ b/frontend/src/views/PublicProfileView.vue
+@@ -12,6 +12,8 @@ interface PublicPicture {
+   url: string;
+   isProfilePicture: boolean;
+   position: number;
++  youLiked: boolean;
++  likeCount: number;
+ }
+ 
+ interface PublicTag {
+@@ -51,6 +53,7 @@ const error = ref("");
+ const actionError = ref("");
+ const successMessage = ref("");
+ const actionBusy = ref(false);
++const pictureLikeBusyId = ref<string | null>(null);
+ 
+ const showReportForm = ref(false);
+ const reportReason = ref("");
+@@ -123,7 +126,7 @@ async function toggleLike(): Promise<void> {
+ 
+     if (profile.value.relationship.youLiked) {
+       await api.delete(url);
+-      successMessage.value = "Like removed.";
++      successMessage.value = "Profile like removed.";
+     } else {
+       await api.post(url);
+       successMessage.value = "Profile liked.";
+@@ -139,6 +142,42 @@ async function toggleLike(): Promise<void> {
+   }
+ }
+ 
++async function togglePictureLike(picture: PublicPicture): Promise<void> {
++  if (!profile.value || actionBusy.value || pictureLikeBusyId.value) {
++    return;
++  }
++
++  const ownerId = profile.value.id;
++  const wasLiked = picture.youLiked;
++  pictureLikeBusyId.value = picture.id;
++  actionError.value = "";
++  successMessage.value = "";
++
++  try {
++    const url = `/interactions/${ownerId}/pictures/${picture.id}/like`;
++    if (wasLiked) {
++      await api.delete(url);
++    } else {
++      await api.post(url);
++    }
++
++    if (profile.value?.id === ownerId) {
++      picture.youLiked = !wasLiked;
++      picture.likeCount = Math.max(
++        0,
++        picture.likeCount + (wasLiked ? -1 : 1),
++      );
++      successMessage.value = wasLiked
++        ? "Profile picture unliked."
++        : "Profile picture liked.";
++    }
++  } catch (requestError) {
++    actionError.value = getApiError(requestError);
++  } finally {
++    pictureLikeBusyId.value = null;
++  }
++}
++
+ async function blockUser(): Promise<void> {
+   if (!profile.value || actionBusy.value) {
+     return;
+@@ -256,12 +295,30 @@ watch(
+     >
+       <div class="photo-section">
+     <div class="photo-grid">
+-      <img
++      <div
+         v-for="picture in profile.pictures"
+         :key="picture.id"
+-        :src="picture.url"
+-        :alt="`${profile.firstName}'s profile picture`"
+-      />
++        class="photo-tile"
++      >
++        <img
++          :src="picture.url"
++          :alt="`${profile.firstName}'s picture ${picture.position}`"
++        />
++        <button
++          type="button"
++          class="picture-like-button"
++          :class="{ liked: picture.youLiked }"
++          :disabled="actionBusy || pictureLikeBusyId !== null"
++          :aria-pressed="picture.youLiked"
++          :aria-label="picture.youLiked
++            ? `Unlike picture ${picture.position}`
++            : `Like picture ${picture.position}`"
++          @click="togglePictureLike(picture)"
++        >
++          {{ picture.youLiked ? "♥" : "♡" }}
++          <span class="picture-like-count">{{ picture.likeCount }}</span>
++        </button>
++      </div>
+ 
+       <div
+         v-if="profile.pictures.length === 0"
+@@ -271,27 +328,6 @@ watch(
+       </div>
+     </div>
+ 
+-    <button
+-      type="button"
+-      class="picture-like-button"
+-      :class="{
+-        liked: profile.relationship.youLiked,
+-      }"
+-      :disabled="actionBusy"
+-      :aria-pressed="profile.relationship.youLiked"
+-      :aria-label="
+-        profile.relationship.youLiked
+-          ? 'Unlike this profile'
+-          : 'Like this profile'
+-      "
+-      @click="toggleLike"
+-    >
+-      {{
+-        profile.relationship.youLiked
+-          ? "♥"
+-          : "♡"
+-      }}
+-    </button>
+   </div>
+ 
+       <div class="details">
+@@ -669,10 +705,15 @@ watch(
+   min-width: 0;
+ }
+ 
++.photo-tile {
++  position: relative;
++  min-width: 0;
++}
++
+ .picture-like-button {
+   position: absolute;
+-  right: 1rem;
+-  bottom: 1rem;
++  right: 0.7rem;
++  bottom: 0.7rem;
+   display: grid;
+   width: 3.4rem;
+   height: 3.4rem;
+@@ -690,6 +731,11 @@ watch(
+     background 0.2s ease;
+ }
+ 
++.picture-like-count {
++  font-size: 0.75rem;
++  font-weight: 800;
++}
++
+ .picture-like-button:hover:not(:disabled) {
+   transform: scale(1.08);
+ }
+@@ -703,4 +749,4 @@ watch(
+   cursor: wait;
+   opacity: 0.65;
+ }
+-</style>
+\ No newline at end of file
++</style>

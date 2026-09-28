@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { api, getApiError } from "../services/api";
+import { socket } from "../services/socket";
 import { useNotificationStore } from "../stores/notifications";
 
 
@@ -43,12 +44,6 @@ const totalPages = ref(1);
 const total = ref(0);
 const limit = 20;
 
-const unreadCount = computed(() => {
-  return notifications.value.filter(
-    (notification) => !notification.isRead,
-  ).length;
-});
-
 function formatDate(value: string): string {
   const date = new Date(value);
 
@@ -65,6 +60,7 @@ function formatDate(value: string): string {
 function notificationIcon(type: string): string {
   switch (type) {
     case "like":
+    case "picture_like":
       return "♥";
     case "match":
       return "💞";
@@ -74,6 +70,7 @@ function notificationIcon(type: string): string {
     case "message":
       return "💬";
     case "unlike":
+    case "picture_unlike":
       return "💔";
     default:
       return "🔔";
@@ -160,12 +157,12 @@ async function markAllAsRead(): Promise<void> {
 
     successMessage.value =
       "All notifications marked as read.";
+    notificationStore.clearUnread();
   } catch (requestError) {
     error.value = getApiError(requestError);
   } finally {
     actionBusy.value = false;
   }
-  notificationStore.clearUnread();
 }
 
 function previousPage(): void {
@@ -181,7 +178,16 @@ function nextPage(): void {
 }
 
 onMounted(() => {
+  socket.on("notification:new", handleNewNotification);
   void loadNotifications();
+});
+
+function handleNewNotification(): void {
+  void loadNotifications(1);
+}
+
+onBeforeUnmount(() => {
+  socket.off("notification:new", handleNewNotification);
 });
 </script>
 
@@ -268,7 +274,12 @@ onMounted(() => {
 
         <div class="notification-content">
           <div class="message-row">
-            <p>{{ notification.message }}</p>
+            <p>
+              <strong v-if="notification.type === 'message'">Chat message: </strong>
+              <strong v-else-if="notification.type === 'like'">Profile like: </strong>
+              <strong v-else-if="notification.type === 'picture_like'">Picture like: </strong>
+              {{ notification.message }}
+            </p>
 
             <span
               v-if="!notification.isRead"
@@ -282,7 +293,16 @@ onMounted(() => {
           </p>
 
           <RouterLink
-            v-if="notification.actor"
+            v-if="notification.type === 'message' && notification.actor"
+            :to="{ name: 'chat', query: { userId: notification.actor.id } }"
+            class="profile-link"
+            @click.stop="markAsRead(notification)"
+          >
+            Open chat with @{{ notification.actor.username }}
+          </RouterLink>
+
+          <RouterLink
+            v-else-if="notification.actor"
             :to="`/profiles/${notification.actor.id}`"
             class="profile-link"
             @click.stop="markAsRead(notification)"

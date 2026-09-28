@@ -157,8 +157,10 @@ export const notificationRoutes = async (
     async (request, reply) => {
       const result = await database.query<{
         count: number;
+        message_count: number;
       }>(
-        `SELECT COUNT(*)::integer AS count
+        `SELECT COUNT(*)::integer AS count,
+                COUNT(*) FILTER (WHERE type = 'message')::integer AS message_count
          FROM notifications
          WHERE recipient_id = $1
            AND read_at IS NULL`,
@@ -168,6 +170,8 @@ export const notificationRoutes = async (
       return reply.status(200).send({
         unreadCount:
           result.rows[0]?.count ?? 0,
+        unreadMessageCount:
+          result.rows[0]?.message_count ?? 0,
       });
     },
   );

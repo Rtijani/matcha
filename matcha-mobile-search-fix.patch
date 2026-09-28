@@ -1,0 +1,272 @@
+diff --git a/backend/src/routes/search.routes.ts b/backend/src/routes/search.routes.ts
+index 73cafdc..ad36b5c 100644
+--- a/backend/src/routes/search.routes.ts
++++ b/backend/src/routes/search.routes.ts
+@@ -51,6 +51,7 @@ const searchSchema = z
+         "distance",
+         "fame",
+         "tags",
++        "location",
+       ])
+       .default("fame"),
+ 
+@@ -209,8 +210,8 @@ export const searchRoutes = async (
+         values.push(city);
+ 
+         filters.push(
+-          `lower(profiles.city) =
+-             lower($${values.length})`,
++          `(lower(profiles.city) = lower($${values.length})
++            OR lower(profiles.neighborhood) = lower($${values.length}))`,
+         );
+       }
+ 
+@@ -245,6 +246,8 @@ export const searchRoutes = async (
+         fame:
+           `profiles.fame_rating ${direction}`,
+         tags: `common_tags ${direction}`,
++        location:
++          `lower(COALESCE(profiles.city, profiles.neighborhood)) ${direction} NULLS LAST`,
+       };
+ 
+       const orderBy = orderColumns[sortBy];
+@@ -262,6 +265,7 @@ export const searchRoutes = async (
+         neighborhood: string | null;
+         main_picture: string | null;
+         common_tags: number;
++        common_tag_names: string[];
+         distance_km: string | null;
+       }>(
+         `WITH current_profile AS (
+@@ -306,6 +310,18 @@ export const searchRoutes = async (
+                AND current_tags.user_id = $1
+            ) AS common_tags,
+ 
++           ARRAY(
++             SELECT tags.name
++             FROM user_tags candidate_tags
++             INNER JOIN user_tags current_tags
++               ON current_tags.tag_id = candidate_tags.tag_id
++             INNER JOIN tags
++               ON tags.id = candidate_tags.tag_id
++             WHERE candidate_tags.user_id = users.id
++               AND current_tags.user_id = $1
++             ORDER BY tags.name
++           ) AS common_tag_names,
++
+            CASE
+              WHEN
+                current_profile.latitude IS NOT NULL
+@@ -405,7 +421,7 @@ export const searchRoutes = async (
+             neighborhood:
+               profile.neighborhood,
+             commonTags:
+-              profile.common_tags,
++              profile.common_tag_names,
+             distanceKm:
+               profile.distance_km === null
+                 ? null
+@@ -424,4 +440,3 @@ export const searchRoutes = async (
+     },
+   );
+ };
+-
+diff --git a/frontend/src/App.vue b/frontend/src/App.vue
+index f90dbb5..30cf5ae 100644
+--- a/frontend/src/App.vue
++++ b/frontend/src/App.vue
+@@ -17,16 +17,28 @@ const notificationStore = useNotificationStore();
+ const router = useRouter();
+ 
+ const menuOpen = ref(false);
++const loggingOut = ref(false);
++const logoutError = ref("");
+ 
+ const closeMenu = (): void => {
+   menuOpen.value = false;
+ };
+ 
+ const logout = async (): Promise<void> => {
+-  closeMenu();
+-  notificationStore.stopRealtime();
+-  await auth.logout();
+-  await router.push("/login");
++  if (loggingOut.value) return;
++  loggingOut.value = true;
++  logoutError.value = "";
++
++  try {
++    await auth.logout();
++    notificationStore.stopRealtime();
++    closeMenu();
++    await router.replace("/login");
++  } catch {
++    logoutError.value = "Could not log out. Please try again.";
++  } finally {
++    loggingOut.value = false;
++  }
+ };
+ 
+ watch(
+@@ -59,6 +71,16 @@ onBeforeUnmount(() => {
+         Matcha
+       </RouterLink>
+ 
++      <button
++        v-if="auth.isAuthenticated"
++        class="logout mobile-logout"
++        type="button"
++        :disabled="loggingOut"
++        @click="logout"
++      >
++        {{ loggingOut ? "Logging out..." : "Log out" }}
++      </button>
++
+       <button
+         type="button"
+         class="menu-toggle"
+@@ -131,9 +153,10 @@ onBeforeUnmount(() => {
+           <button
+             class="logout"
+             type="button"
++            :disabled="loggingOut"
+             @click="logout"
+           >
+-            Log out
++            {{ loggingOut ? "Logging out..." : "Log out" }}
+           </button>
+         </template>
+ 
+@@ -149,6 +172,10 @@ onBeforeUnmount(() => {
+       </nav>
+     </header>
+ 
++    <p v-if="logoutError" class="logout-error" role="alert">
++      {{ logoutError }}
++    </p>
++
+     <RouterView />
+   </div>
+ </template>
+@@ -251,9 +278,37 @@ onBeforeUnmount(() => {
+   cursor: pointer;
+ }
+ 
++.logout:disabled {
++  opacity: 0.65;
++  cursor: wait;
++}
++
++.mobile-logout {
++  display: none;
++}
++
++.logout-error {
++  margin: 0;
++  padding: 0.65rem 1rem;
++  color: #991b1b;
++  background: #fee2e2;
++}
++
+ @media (max-width: 950px) {
+   .header {
+     flex-wrap: wrap;
++    gap: 0.6rem;
++  }
++
++  .mobile-logout {
++    display: inline-flex;
++    margin-left: auto;
++    padding: 0.55rem 0.7rem;
++    white-space: nowrap;
++  }
++
++  .brand {
++    font-size: 1.35rem;
+   }
+ 
+   .menu-toggle {
+@@ -275,5 +330,9 @@ onBeforeUnmount(() => {
+   .navigation.open {
+     display: flex;
+   }
++
++  .navigation .logout {
++    display: none;
++  }
+ }
+ </style>
+diff --git a/frontend/src/stores/auth.ts b/frontend/src/stores/auth.ts
+index 15600ba..c8d158d 100644
+--- a/frontend/src/stores/auth.ts
++++ b/frontend/src/stores/auth.ts
+@@ -95,12 +95,9 @@ export const useAuthStore =
+ 
+     const logout =
+       async (): Promise<void> => {
+-        try {
+-          await api.post("/auth/logout");
+-        } finally {
+-          user.value = null;
+-          initialized.value = true;
+-        }
++        await api.post("/auth/logout");
++        user.value = null;
++        initialized.value = true;
+       };
+ 
+     return {
+@@ -114,4 +111,3 @@ export const useAuthStore =
+       logout,
+     };
+   });
+-
+diff --git a/frontend/src/views/SearchView.vue b/frontend/src/views/SearchView.vue
+index fe04ef7..9b7263a 100644
+--- a/frontend/src/views/SearchView.vue
++++ b/frontend/src/views/SearchView.vue
+@@ -172,12 +172,12 @@ onMounted(searchProfiles);
+         </label>
+ 
+         <label>
+-          City
++          City or neighborhood
+           <input
+             v-model.trim="filters.city"
+             type="text"
+             maxlength="150"
+-            placeholder="Le Havre"
++            placeholder="Le Havre or Centre-ville"
+           />
+         </label>
+ 
+@@ -196,6 +196,7 @@ onMounted(searchProfiles);
+             <option value="fame">Fame rating</option>
+             <option value="age">Age</option>
+             <option value="distance">Distance</option>
++            <option value="location">Location name</option>
+             <option value="tags">
+               Common interests
+             </option>
+@@ -206,10 +207,10 @@ onMounted(searchProfiles);
+           Sort direction
+           <select v-model="filters.sortOrder">
+             <option value="desc">
+-              Highest first
++              Descending (Z–A / high–low)
+             </option>
+             <option value="asc">
+-              Lowest first
++              Ascending (A–Z / low–high)
+             </option>
+           </select>
+         </label>
+@@ -287,7 +288,7 @@ onMounted(searchProfiles);
+             </div>
+ 
+             <p class="location">
+-              {{ person.city || "Location unavailable" }}
++              {{ person.city || person.neighborhood || "Location unavailable" }}
+ 
+               <span v-if="person.distanceKm !== null">
+                 · {{ person.distanceKm }} km

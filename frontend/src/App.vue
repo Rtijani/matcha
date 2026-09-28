@@ -17,16 +17,28 @@ const notificationStore = useNotificationStore();
 const router = useRouter();
 
 const menuOpen = ref(false);
+const loggingOut = ref(false);
+const logoutError = ref("");
 
 const closeMenu = (): void => {
   menuOpen.value = false;
 };
 
 const logout = async (): Promise<void> => {
-  closeMenu();
-  notificationStore.stopRealtime();
-  await auth.logout();
-  await router.push("/login");
+  if (loggingOut.value) return;
+  loggingOut.value = true;
+  logoutError.value = "";
+
+  try {
+    await auth.logout();
+    notificationStore.stopRealtime();
+    closeMenu();
+    await router.replace("/login");
+  } catch {
+    logoutError.value = "Could not log out. Please try again.";
+  } finally {
+    loggingOut.value = false;
+  }
 };
 
 watch(
@@ -60,6 +72,16 @@ onBeforeUnmount(() => {
       </RouterLink>
 
       <button
+        v-if="auth.isAuthenticated"
+        class="logout mobile-logout"
+        type="button"
+        :disabled="loggingOut"
+        @click="logout"
+      >
+        {{ loggingOut ? "Logging out..." : "Log out" }}
+      </button>
+
+      <button
         type="button"
         class="menu-toggle"
         :aria-expanded="menuOpen"
@@ -88,8 +110,17 @@ onBeforeUnmount(() => {
             Activity
           </RouterLink>
 
-          <RouterLink to="/chat" @click="closeMenu">
+          <RouterLink to="/chat" class="notification-link" @click="closeMenu">
             Messages
+            <span
+              v-if="notificationStore.unreadMessageCount > 0"
+              class="notification-badge"
+              :aria-label="`${notificationStore.unreadMessageCount} unread chat notifications`"
+            >
+              {{ notificationStore.unreadMessageCount > 99
+                ? "99+"
+                : notificationStore.unreadMessageCount }}
+            </span>
           </RouterLink>
 
           <RouterLink
@@ -122,9 +153,10 @@ onBeforeUnmount(() => {
           <button
             class="logout"
             type="button"
+            :disabled="loggingOut"
             @click="logout"
           >
-            Log out
+            {{ loggingOut ? "Logging out..." : "Log out" }}
           </button>
         </template>
 
@@ -139,6 +171,10 @@ onBeforeUnmount(() => {
         </template>
       </nav>
     </header>
+
+    <p v-if="logoutError" class="logout-error" role="alert">
+      {{ logoutError }}
+    </p>
 
     <RouterView />
   </div>
@@ -242,9 +278,37 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.logout:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.mobile-logout {
+  display: none;
+}
+
+.logout-error {
+  margin: 0;
+  padding: 0.65rem 1rem;
+  color: #991b1b;
+  background: #fee2e2;
+}
+
 @media (max-width: 950px) {
   .header {
     flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .mobile-logout {
+    display: inline-flex;
+    margin-left: auto;
+    padding: 0.55rem 0.7rem;
+    white-space: nowrap;
+  }
+
+  .brand {
+    font-size: 1.35rem;
   }
 
   .menu-toggle {
@@ -265,6 +329,10 @@ onBeforeUnmount(() => {
 
   .navigation.open {
     display: flex;
+  }
+
+  .navigation .logout {
+    display: none;
   }
 }
 </style>

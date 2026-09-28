@@ -172,12 +172,12 @@ onMounted(searchProfiles);
         </label>
 
         <label>
-          City
+          City or neighborhood
           <input
             v-model.trim="filters.city"
             type="text"
             maxlength="150"
-            placeholder="Le Havre"
+            placeholder="Le Havre or Centre-ville"
           />
         </label>
 
@@ -196,6 +196,7 @@ onMounted(searchProfiles);
             <option value="fame">Fame rating</option>
             <option value="age">Age</option>
             <option value="distance">Distance</option>
+            <option value="location">Location name</option>
             <option value="tags">
               Common interests
             </option>
@@ -206,10 +207,10 @@ onMounted(searchProfiles);
           Sort direction
           <select v-model="filters.sortOrder">
             <option value="desc">
-              Highest first
+              Descending (Z–A / high–low)
             </option>
             <option value="asc">
-              Lowest first
+              Ascending (A–Z / low–high)
             </option>
           </select>
         </label>
@@ -287,7 +288,7 @@ onMounted(searchProfiles);
             </div>
 
             <p class="location">
-              {{ person.city || "Location unavailable" }}
+              {{ person.city || person.neighborhood || "Location unavailable" }}
 
               <span v-if="person.distanceKm !== null">
                 · {{ person.distanceKm }} km

@@ -12,6 +12,8 @@ const formLoaded = ref(false);
 const selectedPicture = ref<File | null>(null);
 const picturePreview = ref("");
 const selectedTags = ref<string[]>([]);
+const locationNotice = ref("");
+let locationRequestId = 0;
 
 const form = reactive({
   gender: "",
@@ -176,56 +178,81 @@ async function saveTags(): Promise<void> {
 }
 
 async function saveProfile(): Promise<void> {
+  if (!form.locationConsent && !form.city.trim()) {
+    profileStore.error =
+      "Enter your city to save your profile without GPS.";
+    return;
+  }
+
   await profileStore.updateProfile({
     gender: form.gender,
     sexualPreference: form.sexualPreference,
     biography: form.biography,
     birthDate: form.birthDate,
     locationConsent: form.locationConsent,
-    latitude: form.latitude,
-    longitude: form.longitude,
+    latitude: form.locationConsent ? form.latitude : undefined,
+    longitude: form.locationConsent ? form.longitude : undefined,
     city: form.city.trim() || undefined,
     neighborhood: form.neighborhood.trim() || undefined,
   });
 }
 
-async function useApproximateLocation(): Promise<void> {
+function stopUsingGps(): void {
+  locationRequestId += 1;
+  form.locationConsent = false;
+  form.latitude = undefined;
+  form.longitude = undefined;
+  profileStore.error = "";
+  locationNotice.value =
+    "GPS is off. Enter your city and save to remove previously stored coordinates.";
+}
+
+async function useApproximateLocation(
+  requestId: number,
+): Promise<void> {
   const location = await profileStore.locateByIp();
 
-  if (!location) {
-    profileStore.error =
-      "Your location could not be determined automatically. Please enter your city manually.";
+  if (requestId !== locationRequestId) return;
+
+  if (!location?.city) {
+    locationNotice.value =
+      "GPS is off. Enter your city manually and save your profile.";
     return;
   }
 
-  form.latitude = location.latitude;
-  form.longitude = location.longitude;
-  form.locationConsent = true;
-
-  if (location.city && !form.city) {
+  stopUsingGps();
+  if (!form.city.trim()) {
     form.city = location.city;
   }
-
-  profileStore.error =
-    "Precise location unavailable — using an approximate location based on your network instead.";
+  locationNotice.value =
+    "GPS is off. We filled in an approximate city from your network; check it before saving.";
 }
 
 function useCurrentLocation(): void {
   profileStore.error = "";
+  locationNotice.value = "Requesting your current position...";
+  const requestId = ++locationRequestId;
 
   if (!navigator.geolocation) {
-    void useApproximateLocation();
+    void useApproximateLocation(requestId);
     return;
   }
 
   navigator.geolocation.getCurrentPosition(
     (position) => {
+      if (requestId !== locationRequestId) return;
       form.latitude = position.coords.latitude;
       form.longitude = position.coords.longitude;
       form.locationConsent = true;
+      locationNotice.value =
+        "GPS position selected. Save your profile to keep it.";
     },
     () => {
-      void useApproximateLocation();
+      if (requestId !== locationRequestId) return;
+      form.locationConsent = false;
+      form.latitude = undefined;
+      form.longitude = undefined;
+      void useApproximateLocation(requestId);
     },
   );
 }
@@ -514,6 +541,7 @@ onBeforeUnmount(() => {
               v-model.trim="form.city"
               type="text"
               maxlength="150"
+              :required="!form.locationConsent"
               placeholder="Le Havre"
             />
           </label>
@@ -561,6 +589,22 @@ onBeforeUnmount(() => {
           >
             Use my current location
           </button>
+
+          <button
+            type="button"
+            class="secondary-button"
+            @click="stopUsingGps"
+          >
+            Don't use GPS — enter my city
+          </button>
+
+          <p v-if="locationNotice" class="location-result" role="status">
+            {{ locationNotice }}
+          </p>
+
+          <p v-else-if="!form.locationConsent" class="location-result">
+            GPS is off. No GPS coordinates will be saved.
+          </p>
 
           <p
             v-if="

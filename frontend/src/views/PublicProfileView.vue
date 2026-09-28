@@ -12,6 +12,8 @@ interface PublicPicture {
   url: string;
   isProfilePicture: boolean;
   position: number;
+  youLiked: boolean;
+  likeCount: number;
 }
 
 interface PublicTag {
@@ -51,6 +53,7 @@ const error = ref("");
 const actionError = ref("");
 const successMessage = ref("");
 const actionBusy = ref(false);
+const pictureLikeBusyId = ref<string | null>(null);
 
 const showReportForm = ref(false);
 const reportReason = ref("");
@@ -123,7 +126,7 @@ async function toggleLike(): Promise<void> {
 
     if (profile.value.relationship.youLiked) {
       await api.delete(url);
-      successMessage.value = "Like removed.";
+      successMessage.value = "Profile like removed.";
     } else {
       await api.post(url);
       successMessage.value = "Profile liked.";
@@ -136,6 +139,42 @@ async function toggleLike(): Promise<void> {
     actionError.value = getApiError(requestError);
   } finally {
     actionBusy.value = false;
+  }
+}
+
+async function togglePictureLike(picture: PublicPicture): Promise<void> {
+  if (!profile.value || actionBusy.value || pictureLikeBusyId.value) {
+    return;
+  }
+
+  const ownerId = profile.value.id;
+  const wasLiked = picture.youLiked;
+  pictureLikeBusyId.value = picture.id;
+  actionError.value = "";
+  successMessage.value = "";
+
+  try {
+    const url = `/interactions/${ownerId}/pictures/${picture.id}/like`;
+    if (wasLiked) {
+      await api.delete(url);
+    } else {
+      await api.post(url);
+    }
+
+    if (profile.value?.id === ownerId) {
+      picture.youLiked = !wasLiked;
+      picture.likeCount = Math.max(
+        0,
+        picture.likeCount + (wasLiked ? -1 : 1),
+      );
+      successMessage.value = wasLiked
+        ? "Profile picture unliked."
+        : "Profile picture liked.";
+    }
+  } catch (requestError) {
+    actionError.value = getApiError(requestError);
+  } finally {
+    pictureLikeBusyId.value = null;
   }
 }
 
@@ -254,21 +293,42 @@ watch(
       v-else-if="profile"
       class="profile-card"
     >
-      <div class="photo-grid">
+      <div class="photo-section">
+    <div class="photo-grid">
+      <div
+        v-for="picture in profile.pictures"
+        :key="picture.id"
+        class="photo-tile"
+      >
         <img
-          v-for="picture in profile.pictures"
-          :key="picture.id"
           :src="picture.url"
-          :alt="`${profile.firstName}'s profile picture`"
+          :alt="`${profile.firstName}'s picture ${picture.position}`"
         />
-
-        <div
-          v-if="profile.pictures.length === 0"
-          class="photo-placeholder"
+        <button
+          type="button"
+          class="picture-like-button"
+          :class="{ liked: picture.youLiked }"
+          :disabled="actionBusy || pictureLikeBusyId !== null"
+          :aria-pressed="picture.youLiked"
+          :aria-label="picture.youLiked
+            ? `Unlike picture ${picture.position}`
+            : `Like picture ${picture.position}`"
+          @click="togglePictureLike(picture)"
         >
-          ♡
-        </div>
+          {{ picture.youLiked ? "♥" : "♡" }}
+          <span class="picture-like-count">{{ picture.likeCount }}</span>
+        </button>
       </div>
+
+      <div
+        v-if="profile.pictures.length === 0"
+        class="photo-placeholder"
+      >
+        ♡
+      </div>
+    </div>
+
+  </div>
 
       <div class="details">
         <h1>
@@ -487,7 +547,8 @@ watch(
   min-height: 250px;
   place-items: center;
   color: #db2777;
-  font-size: 5rem;
+  font-size: 1.2rem;
+  font-weight:700;
 }
 
 .details {
@@ -637,5 +698,55 @@ watch(
 
 .report-form small {
   color: #6b7280;
+}
+
+.photo-section {
+  position: relative;
+  min-width: 0;
+}
+
+.photo-tile {
+  position: relative;
+  min-width: 0;
+}
+
+.picture-like-button {
+  position: absolute;
+  right: 0.7rem;
+  bottom: 0.7rem;
+  display: grid;
+  width: 3.4rem;
+  height: 3.4rem;
+  padding: 0;
+  border: 2px solid white;
+  border-radius: 50%;
+  color: #db2777;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 8px 22px rgba(131, 24, 67, 0.3);
+  font-size: 1.8rem;
+  cursor: pointer;
+  place-items: center;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease;
+}
+
+.picture-like-count {
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.picture-like-button:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+
+.picture-like-button.liked {
+  color: white;
+  background: #db2777;
+}
+
+.picture-like-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 </style>

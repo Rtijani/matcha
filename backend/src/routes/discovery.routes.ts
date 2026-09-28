@@ -397,16 +397,25 @@ export const discoveryRoutes = async (
         file_path: string;
         is_profile_picture: boolean;
         position: number;
+        you_liked: boolean;
+        like_count: number;
       }>(
         `SELECT
-           id,
-           file_path,
-           is_profile_picture,
-           position
-         FROM profile_pictures
-         WHERE user_id = $1
-         ORDER BY position`,
-        [viewedUserId],
+           picture.id,
+           picture.file_path,
+           picture.is_profile_picture,
+           picture.position,
+           EXISTS (
+             SELECT 1 FROM picture_likes mine
+             WHERE mine.picture_id = picture.id
+               AND mine.liker_id = $2
+           ) AS you_liked,
+           (SELECT COUNT(*)::integer FROM picture_likes likes
+            WHERE likes.picture_id = picture.id) AS like_count
+         FROM profile_pictures picture
+         WHERE picture.user_id = $1
+         ORDER BY picture.position`,
+        [viewedUserId, currentUserId],
       );
 
       const relationshipResult =
@@ -433,18 +442,25 @@ export const discoveryRoutes = async (
       const relationship =
         relationshipResult.rows[0];
 
-            const viewResult = await database.query<{
+       const viewResult = await database.query<{
         id: string;
       }>(
         `INSERT INTO profile_views (
-           viewer_id,
-           viewed_id
-         )
-         VALUES ($1, $2)
-         RETURNING id`,
+          viewer_id,
+          viewed_id
+        )
+        SELECT $1, $2
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM profile_views
+          WHERE viewer_id = $1
+            AND viewed_id = $2
+            AND viewed_at >
+              CURRENT_TIMESTAMP - INTERVAL '5 minutes'
+        )
+        RETURNING id`,
         [currentUserId, viewedUserId],
       );
-
       const recordedView = viewResult.rows[0];
 
             if (recordedView) {
@@ -516,6 +532,8 @@ export const discoveryRoutes = async (
               isProfilePicture:
                 picture.is_profile_picture,
               position: picture.position,
+              youLiked: picture.you_liked,
+              likeCount: picture.like_count,
             }),
           ),
 

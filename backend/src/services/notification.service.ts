@@ -6,7 +6,9 @@ export type NotificationType =
   | "like"
   | "match"
   | "message"
-  | "unlike";
+  | "unlike"
+  | "picture_like"
+  | "picture_unlike";
 
 type DatabaseConnection =
   | PoolClient
